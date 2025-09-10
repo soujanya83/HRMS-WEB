@@ -11,13 +11,15 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::createIfNotExists('departments', function (Blueprint $table) {
+      if (!Schema::hasTable('departments')) {
+        Schema::create('departments', function (Blueprint $table) {
             $table->id();
             $table->foreignId('organization_id')->constrained('organizations')->onDelete('cascade');
             $table->string('name');
             $table->text('description')->nullable();
             $table->timestamps();
         });
+      }
     }
 
     /**

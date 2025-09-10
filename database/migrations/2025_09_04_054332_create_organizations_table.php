@@ -11,7 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::createIfNotExists('organizations', function (Blueprint $table) {
+        if (!Schema::hasTable('organizations')) {
+
+        Schema::create('organizations', function (Blueprint $table) {
             $table->id();
             $table->string('name');
             $table->string('registration_number')->unique()->comment('ABN/ACN in Australia');
@@ -23,6 +25,8 @@ return new class extends Migration
             $table->string('timezone')->default('UTC');
             $table->timestamps();
         });
+
+       }
     }
 
     /**
