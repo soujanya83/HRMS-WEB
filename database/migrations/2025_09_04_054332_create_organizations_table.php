@@ -11,7 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('organizations', function (Blueprint $table) {
+        Schema::createIfNotExists('organizations', function (Blueprint $table) {
             $table->id();
             $table->string('name');
             $table->string('registration_number')->unique()->comment('ABN/ACN in Australia');
