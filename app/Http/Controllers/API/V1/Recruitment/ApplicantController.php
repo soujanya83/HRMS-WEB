@@ -58,6 +58,7 @@ class ApplicantController extends Controller
                 'applied_date' => 'required|date|before_or_equal:today',
             ]);
 
+
             // Handle resume upload
             if ($request->hasFile('resume')) {
                 $resume = $request->file('resume');
@@ -130,6 +131,8 @@ class ApplicantController extends Controller
      */
     public function update(Request $request, $id): JsonResponse
     {
+        // print_r($request->all());
+        // exit;
         try {
             $applicant = Applicant::findOrFail($id);
 
@@ -265,7 +268,7 @@ class ApplicantController extends Controller
     public function getByStatus($status): JsonResponse
     {
         try {
-            $validStatuses = ['new', 'in-review', 'shortlisted', 'interview-scheduled', 'interviewed', 'on-hold', 'rejected', 'hired', 'withdrawn'];
+            $validStatuses = ['Applied','Screening','Interviewing','Offered','Hired','Rejected','Withdrawn'];
             
             if (!in_array($status, $validStatuses)) {
                 return response()->json([
@@ -304,7 +307,7 @@ class ApplicantController extends Controller
             $applicant = Applicant::findOrFail($id);
 
             $validated = $request->validate([
-                'status' => 'required|in:new,in-review,shortlisted,interview-scheduled,interviewed,on-hold,rejected,hired,withdrawn',
+                'status' => 'required|in:Applied,Screening,Interviewing,Offered,Hired,Rejected,Withdrawn',
                 'notes' => 'nullable|string|max:1000'
             ]);
 
