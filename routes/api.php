@@ -7,6 +7,7 @@ use App\Http\Controllers\API\V1\OrganizationController;
 use App\Http\Controllers\API\V1\DepartmentController;
 use App\Http\Controllers\API\V1\DesignationController;
 use App\Http\Controllers\API\V1\Recruitment\JobOpeningController;
+use App\Http\Controllers\API\V1\Recruitment\ApplicantController;
 
 Route::prefix('v1')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
@@ -42,6 +43,24 @@ Route::prefix('v1')->group(function () {
             // Additional custom endpoints
             Route::get('/status/{status}', [JobOpeningController::class, 'getByStatus']);
             Route::get('/active/list', [JobOpeningController::class, 'getActiveJobOpenings']);
+        });
+
+
+        // Applicant API Routes
+        Route::prefix('recruitment/applicants')->group(function () {
+            // Standard CRUD operations
+            Route::get('/', [ApplicantController::class, 'index']);
+            Route::post('/', [ApplicantController::class, 'store']);
+            Route::get('/{id}', [ApplicantController::class, 'show']);
+            Route::put('/{id}', [ApplicantController::class, 'update']);
+            Route::patch('/{id}', [ApplicantController::class, 'update']);
+            Route::delete('/{id}', [ApplicantController::class, 'destroy']);
+            
+            // Additional custom endpoints
+            Route::get('/job-opening/{jobOpeningId}', [ApplicantController::class, 'getByJobOpening']);
+            Route::get('/status/{status}', [ApplicantController::class, 'getByStatus']);
+            Route::patch('/{id}/status', [ApplicantController::class, 'updateStatus']);
+            Route::get('/{id}/resume/download', [ApplicantController::class, 'downloadResume']);
         });
 
 
