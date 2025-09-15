@@ -54,7 +54,7 @@ class ApplicantController extends Controller
                 'resume' => 'nullable|file|mimes:pdf,doc,docx|max:5120', // 5MB max
                 'cover_letter' => 'nullable|string',
                 'source' => 'required|in:website,linkedin,referral,job-board,social-media,direct-application,recruiter,other',
-                'status' => 'required|in:new,in-review,shortlisted,interview-scheduled,interviewed,on-hold,rejected,hired,withdrawn',
+                'status' => 'required|in:Applied,Screening,Interviewing,Offered,Hired,Rejected,Withdrawn',
                 'applied_date' => 'required|date|before_or_equal:today',
             ]);
 
@@ -143,7 +143,7 @@ class ApplicantController extends Controller
                 'resume' => 'nullable|file|mimes:pdf,doc,docx|max:5120',
                 'cover_letter' => 'sometimes|string',
                 'source' => 'sometimes|in:website,linkedin,referral,job-board,social-media,direct-application,recruiter,other',
-                'status' => 'sometimes|in:new,in-review,shortlisted,interview-scheduled,interviewed,on-hold,rejected,hired,withdrawn',
+                'status' => 'required|in:Applied,Screening,Interviewing,Offered,Hired,Rejected,Withdrawn',
                 'applied_date' => 'sometimes|date|before_or_equal:today',
             ]);
 
