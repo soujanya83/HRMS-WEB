@@ -67,7 +67,7 @@ class ApplicantController extends Controller
 
             // Check if job opening is still active
             $jobOpening = JobOpening::findOrFail($validated['job_opening_id']);
-            if ($jobOpening->status !== 'open' || $jobOpening->closing_date < now()) {
+            if ($jobOpening->status !== 'Open' || $jobOpening->closing_date < now()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Job opening is no longer accepting applications',
