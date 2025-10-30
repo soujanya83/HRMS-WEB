@@ -14,6 +14,13 @@ use App\Http\Controllers\API\V1\Recruitment\OnboardingTemplateController;
 use App\Http\Controllers\API\V1\Recruitment\OnboardingTemplateTaskController;
 use App\Http\Controllers\API\V1\Recruitment\OnboardingAutomationController;
 use App\Http\Controllers\API\V1\Employee\EmployeeController;
+use App\Http\Controllers\API\V1\Employee\EmployeeDocumentController;
+use App\Http\Controllers\API\V1\Employee\EmployeeExitController;
+use App\Http\Controllers\API\V1\Employee\EmploymentHistoryController;
+use App\Http\Controllers\API\V1\Employee\ProbationPeriodController;
+use App\Http\Controllers\API\V1\Employee\OffboardingTaskController;
+use App\Http\Controllers\API\V1\Employee\OffboardingTemplateController;
+use App\Http\Controllers\API\V1\Employee\OffboardingTemplateTaskController;
 use Illuminate\Http\Request;
 
 
@@ -189,5 +196,85 @@ Route::prefix('v1')->group(function () {
             Route::delete('/{id}/documents/{docId}', [EmployeeController::class, 'deleteDocument']);
             Route::post('/bulk', [EmployeeController::class, 'bulkCreate']);
         });
+
+
+                    // Employee Documents
+            Route::prefix('employee-documents')->group(function () {
+                Route::get('/', [EmployeeDocumentController::class, 'index']);
+                Route::post('/', [EmployeeDocumentController::class, 'store']);
+                Route::get('/{id}', [EmployeeDocumentController::class, 'show']);
+                Route::put('/{id}', [EmployeeDocumentController::class, 'update']);
+                Route::patch('/{id}', [EmployeeDocumentController::class, 'update']);
+                Route::delete('/{id}', [EmployeeDocumentController::class, 'destroy']);
+                Route::get('/by-employee/{employeeId}', [EmployeeDocumentController::class, 'byEmployee']);
+            });
+
+            // Employee Exit
+            Route::prefix('employee-exits')->group(function () {
+                Route::get('/', [EmployeeExitController::class, 'index']);
+                Route::post('/', [EmployeeExitController::class, 'store']);
+                Route::get('/{id}', [EmployeeExitController::class, 'show']);
+                Route::put('/{id}', [EmployeeExitController::class, 'update']);
+                Route::patch('/{id}', [EmployeeExitController::class, 'update']);
+                Route::delete('/{id}', [EmployeeExitController::class, 'destroy']);
+                Route::get('/by-employee/{employeeId}', [EmployeeExitController::class, 'byEmployee']);
+            });
+
+            // Employment History
+            Route::prefix('employment-history')->group(function () {
+                Route::get('/', [EmploymentHistoryController::class, 'index']);
+                Route::post('/', [EmploymentHistoryController::class, 'store']);
+                Route::get('/{id}', [EmploymentHistoryController::class, 'show']);
+                Route::put('/{id}', [EmploymentHistoryController::class, 'update']);
+                Route::patch('/{id}', [EmploymentHistoryController::class, 'update']);
+                Route::delete('/{id}', [EmploymentHistoryController::class, 'destroy']);
+                Route::get('/by-employee/{employeeId}', [EmploymentHistoryController::class, 'byEmployee']);
+            });
+
+            // Probation Periods
+            Route::prefix('probation-periods')->group(function () {
+                Route::get('/', [ProbationPeriodController::class, 'index']);
+                Route::post('/', [ProbationPeriodController::class, 'store']);
+                Route::get('/{id}', [ProbationPeriodController::class, 'show']);
+                Route::put('/{id}', [ProbationPeriodController::class, 'update']);
+                Route::patch('/{id}', [ProbationPeriodController::class, 'update']);
+                Route::delete('/{id}', [ProbationPeriodController::class, 'destroy']);
+                Route::get('/by-employee/{employeeId}', [ProbationPeriodController::class, 'byEmployee']);
+            });
+
+
+            Route::prefix('offboarding-tasks')->group(function () {
+                Route::get('/', [OffboardingTaskController::class, 'index']);
+                Route::post('/', [OffboardingTaskController::class, 'store']);
+                Route::get('/{id}', [OffboardingTaskController::class, 'show']);
+                Route::put('/{id}', [OffboardingTaskController::class, 'update']);
+                Route::patch('/{id}', [OffboardingTaskController::class, 'update']);
+                Route::delete('/{id}', [OffboardingTaskController::class, 'destroy']);
+                Route::patch('/{id}/complete', [OffboardingTaskController::class, 'markCompleted']);
+                Route::get('/overdue/list', [OffboardingTaskController::class, 'overdue']);
+            });
+
+            Route::prefix('offboarding-templates')->group(function () {
+                Route::get('/', [OffboardingTemplateController::class, 'index']);
+                Route::post('/', [OffboardingTemplateController::class, 'store']);
+                Route::get('/{id}', [OffboardingTemplateController::class, 'show']);
+                Route::put('/{id}', [OffboardingTemplateController::class, 'update']);
+                Route::patch('/{id}', [OffboardingTemplateController::class, 'update']);
+                Route::delete('/{id}', [OffboardingTemplateController::class, 'destroy']);
+                Route::post('/{id}/clone', [OffboardingTemplateController::class, 'clone']);
+            });
+
+            Route::prefix('offboarding-template-tasks')->group(function () {
+                Route::get('/', [OffboardingTemplateTaskController::class, 'index']);
+                Route::post('/', [OffboardingTemplateTaskController::class, 'store']);
+                Route::get('/{id}', [OffboardingTemplateTaskController::class, 'show']);
+                Route::put('/{id}', [OffboardingTemplateTaskController::class, 'update']);
+                Route::patch('/{id}', [OffboardingTemplateTaskController::class, 'update']);
+                Route::delete('/{id}', [OffboardingTemplateTaskController::class, 'destroy']);
+                Route::get('/template/{templateId}', [OffboardingTemplateTaskController::class, 'byTemplate']);
+            });
+
+
+
     });
 });
