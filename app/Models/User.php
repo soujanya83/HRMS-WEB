@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
+use App\Models\Employee\Attendance;
 
 class User extends Authenticatable
 {
@@ -46,4 +47,16 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
+
+    public function attendances()
+    {
+        return $this->hasMany(Attendance::class,'employee_id');
+    }
+
+    public function employee()
+{
+    return $this->hasOne(\App\Models\Employee\Employee::class, 'user_id');
+}
+
+
 }
