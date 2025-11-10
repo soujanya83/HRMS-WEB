@@ -14,6 +14,8 @@ use App\Http\Controllers\API\V1\Recruitment\OnboardingTemplateController;
 use App\Http\Controllers\API\V1\Recruitment\OnboardingTemplateTaskController;
 use App\Http\Controllers\API\V1\Recruitment\OnboardingAutomationController;
 use App\Http\Controllers\API\V1\Employee\EmployeeController;
+use App\Http\Controllers\API\V1\Attendance\AttendanceController;
+use App\Http\Controllers\API\V1\Employee\LeaveController;
 use App\Http\Controllers\API\V1\Employee\EmployeeDocumentController;
 use App\Http\Controllers\API\V1\Employee\EmployeeExitController;
 use App\Http\Controllers\API\V1\Employee\EmploymentHistoryController;
@@ -22,16 +24,23 @@ use App\Http\Controllers\API\V1\Employee\OffboardingTaskController;
 use App\Http\Controllers\API\V1\Employee\OffboardingTemplateController;
 use App\Http\Controllers\API\V1\Employee\OffboardingTemplateTaskController;
 use Illuminate\Http\Request;
+use App\Http\Controllers\API\V1\OrganizationLeaveController;
+use App\Http\Controllers\API\V1\Attendance\OrganizationAttendanceRuleController;
+use App\Http\Controllers\API\V1\HolidayController;
+use App\Http\Controllers\API\V1\ProjectController;
+use App\Http\Controllers\API\V1\TaskController;
 
-
-
+use App\Http\Controllers\API\V1\Attendance\OvertimeRequestController;
+use App\Http\Controllers\API\V1\Employee\TimesheetController;
+use App\Http\Controllers\API\V1\SalaryComponentTypesController;
+use App\Http\Controllers\API\V1\SalaryStructureController;
+use App\Http\Controllers\API\V1\SalaryComponentController;
 
 Route::prefix('v1')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
 
     Route::middleware('auth:sanctum')->group(function () {
-
 
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::get('/profile', function (Request $request) {
@@ -47,6 +56,22 @@ Route::prefix('v1')->group(function () {
         // Nested Designation Routes
         Route::apiResource('departments.designations', DesignationController::class)->shallow();
 
+        Route::apiResource('attendances', AttendanceController::class);
+
+        Route::apiResource('organization-leaves', OrganizationLeaveController::class);
+        Route::apiResource('organization-attendance-rule', OrganizationAttendanceRuleController::class);
+        Route::apiResource('organization-holiday', HolidayController::class);
+        Route::apiResource('organization-project', ProjectController::class);
+        Route::apiResource('organization/employee/tasks', TaskController::class);
+        Route::apiResource('organization/employee/timesheet', TimesheetController::class);
+
+        Route::patch('organization-holiday/{id}/partial', [HolidayController::class, 'partialUpdate']);
+        Route::apiResource('employee-overtime', OvertimeRequestController::class);
+        Route::apiResource('organization/salarycomponents/types', SalaryComponentTypesController::class);
+        Route::apiResource('organization/salarycomponents', SalaryComponentController::class);
+        Route::apiResource('organization/employee/salary', SalaryStructureController::class);
+
+        Route::apiResource('organization/employee/salarystructure', SalaryStructureController::class);
 
         Route::prefix('recruitment/job-openings')->group(function () {
             // Standard CRUD operations
@@ -61,7 +86,6 @@ Route::prefix('v1')->group(function () {
             Route::get('/status/{status}', [JobOpeningController::class, 'getByStatus']);
             Route::get('/active/list', [JobOpeningController::class, 'getActiveJobOpenings']);
         });
-
 
         // Applicant API Routes
         Route::prefix('recruitment/applicants')->group(function () {
@@ -79,7 +103,6 @@ Route::prefix('v1')->group(function () {
             Route::patch('/{id}/status', [ApplicantController::class, 'updateStatus']);
             Route::get('/{id}/resume/download', [ApplicantController::class, 'downloadResume']);
         });
-
 
         Route::prefix('recruitment/interviews')->group(function () {
             // Standard CRUD operations
@@ -116,9 +139,6 @@ Route::prefix('v1')->group(function () {
             Route::patch('/{id}/status', [JobOfferController::class, 'updateStatus']);
             Route::get('/{id}/offer-letter/download', [JobOfferController::class, 'downloadOfferLetter']);
         });
-
-
-
 
         Route::prefix('recruitment/onboarding-tasks')->group(function () {
             Route::get('/', [OnboardingTaskController::class, 'index']);
@@ -169,7 +189,6 @@ Route::prefix('v1')->group(function () {
             Route::get('/dashboard', [OnboardingAutomationController::class, 'getDashboard']);
         });
 
-
         Route::prefix('employees')->group(function () {
             Route::get('/', [EmployeeController::class, 'index']);
             Route::post('/', [EmployeeController::class, 'store']);
@@ -197,6 +216,32 @@ Route::prefix('v1')->group(function () {
             Route::post('/bulk', [EmployeeController::class, 'bulkCreate']);
         });
 
+        Route::prefix('attendance')->group(function () {
+            Route::get('/', [AttendanceController::class, 'index']);
+            Route::post('/store', [AttendanceController::class, 'store']);
+            Route::post('/update', [AttendanceController::class, 'update']);
+            Route::get('/show/{attendance}', [AttendanceController::class, 'show']);
+            Route::post('attendances/bulk', [AttendanceController::class, 'bulkStore']);
+            Route::post('/clock-in', [AttendanceController::class, 'clockIn']);
+            Route::post('/clock-out', [AttendanceController::class, 'clockOut']);
+            Route::delete('/destroy/{attendance}', [AttendanceController::class, 'destroy']);
+
+            // Extra work on holiday
+            Route::post('/work-on-holiday', [AttendanceController::class, 'RequestWorkOnHoliday']);
+            Route::get('/work-on-holiday', [AttendanceController::class, 'ShowHolidayRequests']);
+            Route::post('/approve-work-on-holiday', [AttendanceController::class, 'ApproveWorkOnHoliday']);
+        });
+
+        Route::prefix('leave')->group(function () {
+            Route::get('/', [LeaveController::class, 'index']);
+            Route::post('/store', [LeaveController::class, 'store']);
+            Route::post('/store/{id}', [LeaveController::class, 'store']);
+            Route::put('/leaves/{id}', [LeaveController::class, 'update']);
+            Route::put('/approve-leave/{id}', [LeaveController::class, 'approve_leave']);
+            Route::get('/show/{id}', [LeaveController::class, 'show']);
+            Route::delete('/destroy/{id}', [LeaveController::class, 'destroy']);
+            Route::get('/leaveBalance', [LeaveController::class, 'leaveBalance']);
+        });
 
                     // Employee Documents
             Route::prefix('employee-documents')->group(function () {

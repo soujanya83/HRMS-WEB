@@ -34,4 +34,9 @@ class Employee extends Model
     public function employmentHistory() { return $this->hasMany(EmploymentHistory::class); }
     public function probationPeriod() { return $this->hasOne(ProbationPeriod::class); }
     public function exitDetails() { return $this->hasOne(EmployeeExit::class); }
+
+        public function leaves()
+    {
+        return $this->hasMany(Leave::class);
+    }
 }
