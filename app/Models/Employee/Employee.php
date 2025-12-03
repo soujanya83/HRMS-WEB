@@ -57,4 +57,8 @@ class Employee extends Model
     {
         return $this->hasMany(ShiftSwapRequest::class, 'requested_employee_id');
     }
+        public function leaves()
+    {
+        return $this->hasMany(Leave::class);
+    }
 }

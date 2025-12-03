@@ -7,6 +7,7 @@ use Spatie\Permission\Traits\HasRoles;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Support\Facades\DB;
+use App\Models\Employee\Attendance;
 
 class User extends Authenticatable
 {
@@ -96,4 +97,15 @@ class User extends Authenticatable
             ->select('roles.*')
             ->get();
     }
+    public function attendances()
+    {
+        return $this->hasMany(Attendance::class,'employee_id');
+    }
+
+//     public function employee()
+// {
+//     return $this->hasOne(\App\Models\Employee\Employee::class, 'user_id');
+// }
+
+
 }
