@@ -10,6 +10,8 @@ use App\Models\Organization;
 use App\Models\Department;
 use App\Models\Designation;
 use App\Models\Recruitment\Applicant;
+use App\Models\Rostering\Roster;
+use App\Models\Rostering\ShiftSwapRequest;
 
 class Employee extends Model
 {
@@ -34,4 +36,25 @@ class Employee extends Model
     public function employmentHistory() { return $this->hasMany(EmploymentHistory::class); }
     public function probationPeriod() { return $this->hasOne(ProbationPeriod::class); }
     public function exitDetails() { return $this->hasOne(EmployeeExit::class); }
+
+       public function rosters()
+    {
+        return $this->hasMany(Roster::class);
+    }
+
+    /**
+     * Get all shift swap requests this employee has created.
+     */
+    public function shiftSwapRequestsMade()
+    {
+        return $this->hasMany(ShiftSwapRequest::class, 'requester_employee_id');
+    }
+
+    /**
+     * Get all shift swap requests this employee has received.
+     */
+    public function shiftSwapRequestsReceived()
+    {
+        return $this->hasMany(ShiftSwapRequest::class, 'requested_employee_id');
+    }
 }

@@ -21,6 +21,14 @@ use App\Http\Controllers\API\V1\Employee\ProbationPeriodController;
 use App\Http\Controllers\API\V1\Employee\OffboardingTaskController;
 use App\Http\Controllers\API\V1\Employee\OffboardingTemplateController;
 use App\Http\Controllers\API\V1\Employee\OffboardingTemplateTaskController;
+use App\Http\Controllers\API\V1\Rostering\ShiftController;
+use App\Http\Controllers\API\V1\Rostering\RosterController;
+use App\Http\Controllers\API\V1\Rostering\ShiftSwapRequestController;
+use App\Http\Controllers\API\V1\Performance\PerformanceReviewCycleController;
+use App\Http\Controllers\API\V1\Performance\PerformanceGoalController;
+use App\Http\Controllers\API\V1\Performance\GoalKeyResultController;
+use App\Http\Controllers\API\V1\Performance\PerformanceReviewController;
+use App\Http\Controllers\API\V1\Performance\PerformanceFeedbackController;
 use Illuminate\Http\Request;
 
 
@@ -39,7 +47,11 @@ Route::prefix('v1')->group(function () {
         });
 
         // Organization Routes
-        Route::apiResource('organizations', OrganizationController::class);
+        // Route::middleware('org.role:superadmin')->group(function () {
+            Route::apiResource('organizations', OrganizationController::class);
+    // protected routes here
+        // });
+        
 
         // Nested Department Routes
         Route::apiResource('organizations.departments', DepartmentController::class)->shallow();
@@ -273,6 +285,101 @@ Route::prefix('v1')->group(function () {
                 Route::delete('/{id}', [OffboardingTemplateTaskController::class, 'destroy']);
                 Route::get('/template/{templateId}', [OffboardingTemplateTaskController::class, 'byTemplate']);
             });
+
+
+
+            Route::prefix('shifts')->group(function () {
+            Route::get('/', [ShiftController::class, 'index']);
+            Route::post('/', [ShiftController::class, 'store']);
+            Route::get('/{id}', [ShiftController::class, 'show']);
+            Route::put('/{id}', [ShiftController::class, 'update']);
+            Route::patch('/{id}', [ShiftController::class, 'update']);
+            Route::delete('/{id}', [ShiftController::class, 'destroy']);
+            Route::get('/trashed', [ShiftController::class, 'trashed']);
+            Route::patch('/{id}/restore', [ShiftController::class, 'restore']);
+            Route::get('/calendar', [ShiftController::class, 'calendar']);
+        });
+
+        Route::prefix('rosters')->group(function () {
+            Route::get('/', [RosterController::class, 'index']);
+            Route::post('/', [RosterController::class, 'store']);
+            Route::get('/{id}', [RosterController::class, 'show']);
+            Route::put('/{id}', [RosterController::class, 'update']);
+            Route::patch('/{id}', [RosterController::class, 'update']);
+            Route::delete('/{id}', [RosterController::class, 'destroy']);
+            Route::post('/bulk', [RosterController::class, 'bulkStore']);
+            Route::get('/employee/{employeeId}', [RosterController::class, 'byEmployee']);
+        });
+
+        Route::prefix('shift-swap-requests')->group(function () {
+            Route::get('/', [ShiftSwapRequestController::class, 'index']);
+            Route::post('/', [ShiftSwapRequestController::class, 'store']);
+            Route::get('/{id}', [ShiftSwapRequestController::class, 'show']);
+            Route::put('/{id}', [ShiftSwapRequestController::class, 'update']);
+            Route::patch('/{id}', [ShiftSwapRequestController::class, 'update']);
+            Route::delete('/{id}', [ShiftSwapRequestController::class, 'destroy']);
+            Route::patch('/{id}/approve', [ShiftSwapRequestController::class, 'approve']);
+            Route::patch('/{id}/reject', [ShiftSwapRequestController::class, 'reject']);
+            Route::get('/employee/{employeeId}', [ShiftSwapRequestController::class, 'byEmployee']);
+        });
+
+
+        Route::prefix('performance-review-cycles')->group(function () {
+        Route::get('/', [PerformanceReviewCycleController::class, 'index']);
+        Route::post('/', [PerformanceReviewCycleController::class, 'store']);
+        Route::get('/{id}', [PerformanceReviewCycleController::class, 'show']);
+        Route::put('/{id}', [PerformanceReviewCycleController::class, 'update']);
+        Route::patch('/{id}', [PerformanceReviewCycleController::class, 'update']);
+        Route::delete('/{id}', [PerformanceReviewCycleController::class, 'destroy']);
+        Route::get('/status/{status}', [PerformanceReviewCycleController::class, 'status']);
+    });
+
+    Route::prefix('performance-goals')->group(function () {
+        Route::get('/', [PerformanceGoalController::class, 'index']);
+        Route::post('/', [PerformanceGoalController::class, 'store']);
+        Route::get('/{id}', [PerformanceGoalController::class, 'show']);
+        Route::put('/{id}', [PerformanceGoalController::class, 'update']);
+        Route::patch('/{id}', [PerformanceGoalController::class, 'update']);
+        Route::delete('/{id}', [PerformanceGoalController::class, 'destroy']);
+        Route::get('/cycle/{cycleId}', [PerformanceGoalController::class, 'byCycle']);
+        Route::get('/status/{status}', [PerformanceGoalController::class, 'byStatus']);
+        Route::post('/bulk', [PerformanceGoalController::class, 'bulkAssign']);
+    });
+
+    Route::prefix('goal-key-results')->group(function () {
+        Route::get('/', [GoalKeyResultController::class, 'index']);
+        Route::post('/', [GoalKeyResultController::class, 'store']);
+        Route::get('/{id}', [GoalKeyResultController::class, 'show']);
+        Route::put('/{id}', [GoalKeyResultController::class, 'update']);
+        Route::patch('/{id}', [GoalKeyResultController::class, 'update']);
+        Route::delete('/{id}', [GoalKeyResultController::class, 'destroy']);
+        Route::patch('/bulk', [GoalKeyResultController::class, 'bulkUpdate']);
+    });
+
+    Route::prefix('performance-reviews')->group(function () {
+        Route::get('/', [PerformanceReviewController::class, 'index']);
+        Route::post('/', [PerformanceReviewController::class, 'store']);
+        Route::get('/{id}', [PerformanceReviewController::class, 'show']);
+        Route::put('/{id}', [PerformanceReviewController::class, 'update']);
+        Route::patch('/{id}', [PerformanceReviewController::class, 'update']);
+        Route::delete('/{id}', [PerformanceReviewController::class, 'destroy']);
+        Route::patch('/{id}/acknowledge', [PerformanceReviewController::class, 'acknowledge']);
+        Route::get('/employee/{employeeId}', [PerformanceReviewController::class, 'byEmployee']);
+        Route::get('/cycle/{cycleId}', [PerformanceReviewController::class, 'byCycle']);
+    });
+
+    Route::prefix('performance-feedback')->group(function () {
+        Route::get('/', [PerformanceFeedbackController::class, 'index']);
+        Route::post('/', [PerformanceFeedbackController::class, 'store']);
+        Route::get('/{id}', [PerformanceFeedbackController::class, 'show']);
+        Route::put('/{id}', [PerformanceFeedbackController::class, 'update']);
+        Route::patch('/{id}', [PerformanceFeedbackController::class, 'update']);
+        Route::delete('/{id}', [PerformanceFeedbackController::class, 'destroy']);
+        Route::patch('/{id}/read', [PerformanceFeedbackController::class, 'markRead']);
+        Route::get('/receiver/{employeeId}', [PerformanceFeedbackController::class, 'forReceiver']);
+    });
+
+
 
 
 

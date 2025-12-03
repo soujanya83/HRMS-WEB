@@ -12,7 +12,14 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+
+        // (already exists)
         $middleware->append(\Illuminate\Http\Middleware\HandleCors::class);
+
+        // 👉 ADD THIS
+        $middleware->alias([
+            'org.role' => \App\Http\Middleware\OrgRoleMiddleware::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
