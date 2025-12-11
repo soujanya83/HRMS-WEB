@@ -1,127 +1,117 @@
 <?php
 
-namespace App\Http\Controllers\API\V1;
+namespace App\Console\Commands;
 
-use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use App\Models\Payrolls as Payroll;
+use Illuminate\Console\Command;
 use App\Models\Employee\Employee;
 use App\Models\SalaryStructure;
-use App\Models\TaxSlabs as TaxSlab;
 use App\Models\Employee\Attendance;
-use App\Models\OrganizationLeave;
 use App\Models\Employee\Leave as EmployeeLeave;
-use Illuminate\Support\Facades\Auth;
+use App\Models\OrganizationLeave;
+use App\Models\Payrolls as Payroll;
+use App\Models\TaxSlabs as TaxSlab;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Carbon;
 use Exception;
-use Dompdf\Dompdf;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Console\Scheduling\Schedule;
 use App\Models\Organization;
+use App\Models\SalaryStructureComponents;
+use App\Models\SalaryRevisions;
 use App\Models\Employee\OvertimeRequest;
-use App\Models\SalaryStructureComponent;
-use App\Models\SalaryComponentType;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\File;
-use Illuminate\Validation\Rule;
-use Illuminate\Console\Command;
-use Illuminate\Support\Str;
-use PDF;
-use Dompdf\Options;
-use Dompdf\Adapter\CPDF;
-use Dompdf\Adapter\PDFLib;
-use Dompdf\Adapter\GD;
-use Dompdf\Adapter\CPDFLib;
+use App\Models\Employee\Timesheet;
+use Illuminate\Support\Facades\Storage;
 
-class PayrollsController extends Controller
+
+class PayrollsCommand extends Command
 {
-    public function index()
-    {
-        try {
-            $employee = Employee::where('user_id', Auth::id())->firstOrFail();
-            $payrolls = Payroll::where('organization_id', $employee->organization_id)
-                ->with(['employee:id,first_name,last_name', 'salaryStructure'])
-                ->orderBy('pay_period', 'desc')
-                ->get();
+    /**
+     * The name and signature of the console command.
+     *
+     * @var string
+     */
+    // at top of your command class
+    protected $signature = 'payroll:generate-organization
+                        {--month= : Month in Y-m format (optional)}
+                        {--org= : organization id (optional)}
+                        {--employee= : employee id (optional)}';
 
-            return response()->json([
-                'status' => true,
-                'message' => 'Payroll records fetched successfully.',
-                'data' => $payrolls
-            ]);
-        } catch (Exception $e) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Failed to retrieve payrolls.',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
 
     /**
-     * ➕ Create payroll for an employee (Generate salary)
+     * The console command description.
+     *
+     * @var string
      */
-    public function store(Request $request)
+    protected $description = 'Create a new payroll entry for an employee for a given month';
+
+
+
+    public function handle()
     {
-        // Validate request
-        $validated = $request->validate([
-            'month' => 'required|date_format:m-Y',
-            'employee_id' => 'required|exists:employees,id',
-        ]);
+        $month = $this->option('month') ?? now()->subMonth()->format('Y-m'); // default: previous month
+        $targetOrgs = $this->option('org')
+            ? Organization::where('id', $this->option('org'))->get()
+            : Organization::all();
 
-        // Convert m-Y to usable Carbon object
-        $carbon = Carbon::createFromFormat('m-Y', $validated['month']);
+        $this->info("🚀 Generating payroll for month: {$month}");
 
-        $YYYYMM = $carbon->format('Y-m');    // ✔ "2025-10"
-        $fromDate = $carbon->startOfMonth()->toDateString();  // ✔ 2025-10-01
-        $toDate   = $carbon->endOfMonth()->toDateString();    // ✔ 2025-10-31
+        foreach ($targetOrgs as $org) {
+            $this->info("🏢 Processing Organization: {$org->name} (ID: {$org->id})");
 
-        // Fetch employee + organization
-        $employee = Employee::with('salaryStructure')->findOrFail($validated['employee_id']);
-        $org = Organization::findOrFail($employee->organization_id);
+            $employees = Employee::with('salaryStructure')->where('organization_id', $org->id)
+                ->get();
 
-        // 🔍 Check uniqueness
-        $exists = Payroll::where('employee_id', $employee->id)
-            ->where('pay_period', $YYYYMM)
-            ->exists();
+            if ($employees->isEmpty()) {
+                $this->warn("⚠️  No employees found for organization {$org->name}");
+                continue;
+            }
+            // dd($employees);
+            foreach ($employees as $employee) {
+                try {
+                    DB::beginTransaction();
 
-        if ($exists) {
-            return response()->json([
-                'success' => false,
-                'message' => "Payroll already exists for {$validated['month']}."
-            ], 409);
+                    // Skip if payroll already exists
+                    $fromDate = Carbon::parse($month)->startOfMonth()->toDateString();
+                    $toDate   = Carbon::parse($month)->endOfMonth()->toDateString();
+
+                    $exists = Payroll::where('employee_id', $employee->id)
+                        ->where(function ($q) use ($fromDate, $toDate) {
+                            $q->where(function ($q1) use ($fromDate, $toDate) {
+                                // Existing payroll fully covers the target month
+                                $q1->where('from_date', '<=', $fromDate)
+                                    ->where('to_date', '>=', $toDate);
+                            })
+                                ->orWhere(function ($q2) use ($fromDate, $toDate) {
+                                    // Overlap on start
+                                    $q2->whereBetween('from_date', [$fromDate, $toDate]);
+                                })
+                                ->orWhere(function ($q3) use ($fromDate, $toDate) {
+                                    // Overlap on end
+                                    $q3->whereBetween('to_date', [$fromDate, $toDate]);
+                                });
+                        })
+                        ->exists();
+
+                    if ($exists) {
+                        $this->warn("⏩ Payroll already exists for Employee ID {$employee->id} ({$month})");
+                        DB::rollBack();
+                        return;
+                    }
+
+
+                    $this->generatePayrollForEmployee($employee, $org->id, $month, $toDate, $fromDate);
+
+                    DB::commit();
+                    $this->info("✅ Payroll generated for Employee: {$employee->id}");
+                } catch (Exception $e) {
+                    DB::rollBack();
+                    $this->error("❌ Error for Employee {$employee->id}: " . $e->getMessage());
+                }
+            }
         }
 
-        try {
-            DB::beginTransaction();
-
-            // Generate payroll
-            $this->generatePayrollForEmployee(
-                $employee,
-                $org->id,
-                $YYYYMM,   // Pass the normalized month
-                $toDate,
-                $fromDate
-            );
-
-            DB::commit();
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Payroll generated successfully.',
-            ]);
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Error generating payroll',
-                'error'   => $e->getMessage(),
-            ], 500);
-        }
+        $this->info("🎉 Payroll generation completed for all organizations (Month: {$month})");
     }
-
 
     /**
      * Generate payroll for a single employee
@@ -368,7 +358,7 @@ class PayrollsController extends Controller
             }
 
             file_put_contents($fullPath, json_encode($payslip, JSON_PRETTY_PRINT));
-
+            $this->info("🧾 Payslip saved to public/{$filePath}");
 
             // Attempt PDF generation if Dompdf is available
             $pdfFilePath = public_path('payslips/' . $employee->id . '_' . $month . '.pdf');
@@ -378,9 +368,14 @@ class PayrollsController extends Controller
             // build a simple HTML representation
             $html = '<html><head><meta charset="utf-8"><title>Payslip</title><style>body{font-family: Arial, sans-serif;} table{width:100%;border-collapse:collapse;} th,td{padding:6px;border:1px solid #ddd;text-align:left;} .right{text-align:right;}</style></head><body>';
             $html .= '<h3>Payslip - ' . htmlspecialchars($employee->first_name . ' ' . ($employee->last_name ?? '')) . '</h3>';
-            $html .= '<p>Period: ' . $month . ' (' . $fromDate . ' - ' . $toDate . ')</p>';
+            $html .= '<p>Period: ' . $month . ' ('
+                . Carbon::parse($fromDate)->format('d-m-y')
+                . ' - '
+                . Carbon::parse($toDate)->format('d-m-y')
+                . ')</p>';
+
             $html .= '<h4>Earnings</h4><table><tbody>';
-            $html .= '<tr><td>' . htmlspecialchars('Basic Pay') . '</td><td class="right">' . number_format($earnings, 2) . '</td></tr>';
+            $html .= '<tr><td>' . htmlspecialchars('Basic Pay') . '</td><td class="right">' . round(($base / $totalDays) * $effectiveDays, 2) . '</td></tr>';
             foreach ($componentDetails as $c) {
                 $html .= '<tr><td>' . htmlspecialchars($c['name']) . '</td><td class="right">' . number_format($c['amount'], 2) . '</td></tr>';
             }
@@ -403,17 +398,17 @@ class PayrollsController extends Controller
                     $dompdf->setPaper('A4');
                     $dompdf->render();
                     file_put_contents($pdfFilePath, $dompdf->output());
+                    $this->info('📄 PDF payslip saved to public/payslips/' . $employee->id . '_' . $month . '.pdf');
                 } catch (Exception $e) {
-                    Log::error("Dompdf PDF generation failed for employee ID {$employee->id} for month {$month}: " . $e->getMessage());
-                    // save HTML fallback
-                    file_put_contents(public_path('payslips/' . $employee->id . '_' . $month . '.html'), $html);
+                    $this->error('Failed to generate PDF payslip: ' . $e->getMessage());
                 }
             } else {
                 // save HTML fallback for now
                 file_put_contents(public_path('payslips/' . $employee->id . '_' . $month . '.html'), $html);
+                $this->warn('Dompdf not installed. HTML payslip saved as fallback. To enable PDF generation run: composer require dompdf/dompdf');
             }
         } catch (Exception $e) {
-            Log::error("Failed to save payslip for employee ID {$employee->id} for month {$month}: " . $e->getMessage());
+            $this->error('Failed to save payslip: ' . $e->getMessage());
         }
     }
 
@@ -439,125 +434,55 @@ class PayrollsController extends Controller
     //     return $tax;
     // }
 
+
     private function calculateTax($annualIncome, $orgId, $regime = 'new')
-    {
-        $slabs = TaxSlab::where('organization_id', $orgId)
-            ->where('tax_regime', $regime)
-            ->orderBy('min_income')
-            ->get();
+{
+    $slabs = TaxSlab::where('organization_id', $orgId)
+        ->where('tax_regime', $regime)
+        ->orderBy('min_income')
+        ->get();
 
-        $tax = 0;
+    $tax = 0;
 
-        foreach ($slabs as $slab) {
-            if ($annualIncome > $slab->min_income) {
+    foreach ($slabs as $slab) {
+        if ($annualIncome > $slab->min_income) {
+            
+            $upperLimit = $slab->max_income ?? $annualIncome;
 
-                $upperLimit = $slab->max_income ?? $annualIncome;
+            // Calculate slab taxable amount
+            $taxableAmount = min($annualIncome, $upperLimit) - $slab->min_income;
 
-                // Calculate slab taxable amount
-                $taxableAmount = min($annualIncome, $upperLimit) - $slab->min_income;
+            // Step 1: Base tax for this slab
+            $slabTax = ($taxableAmount * $slab->tax_rate) / 100;
 
-                // Step 1: Base tax for this slab
-                $slabTax = ($taxableAmount * $slab->tax_rate) / 100;
-
-                // Step 2: Surcharge (percentage of tax)
-                $surchargeAmount = 0;
-                if (!empty($slab->surcharge)) {
-                    $surchargeAmount = ($slabTax * $slab->surcharge) / 100;
-                }
-
-                // Step 3: Cess (percentage of (tax + surcharge))
-                $cessAmount = 0;
-                if (!empty($slab->cess)) {
-                    $cessAmount = (($slabTax + $surchargeAmount) * $slab->cess) / 100;
-                }
-
-                // Add all to total tax
-                $tax += ($slabTax + $surchargeAmount + $cessAmount);
+            // Step 2: Surcharge (percentage of tax)
+            $surchargeAmount = 0;
+            if (!empty($slab->surcharge)) {
+                $surchargeAmount = ($slabTax * $slab->surcharge) / 100;
             }
-        }
 
-        return round($tax, 2);
-    }
+            // Step 3: Cess (percentage of (tax + surcharge))
+            $cessAmount = 0;
+            if (!empty($slab->cess)) {
+                $cessAmount = (($slabTax + $surchargeAmount) * $slab->cess) / 100;
+            }
 
-
-    /**
-     * 🧮 Tax Calculation Based on Slabs
-     */
-
-
-    /**
-     * 🧾 Show single payroll record
-     */
-    public function show($id)
-    {
-        try {
-            $payroll = Payroll::with(['employee', 'salaryStructure'])->findOrFail($id);
-
-            return response()->json([
-                'status' => true,
-                'message' => 'Payroll details retrieved successfully.',
-                'data' => $payroll
-            ]);
-        } catch (Exception $e) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Error fetching payroll.',
-                'error' => $e->getMessage()
-            ], 500);
+            // Add all to total tax
+            $tax += ($slabTax + $surchargeAmount + $cessAmount);
         }
     }
 
-    /**
-     * Update payroll (status, notes or manual adjustments)
-     */
-    public function update(Request $request, $id)
+    return round($tax, 2);
+}
+
+
+
+
+    protected function schedule(Schedule $schedule): void
     {
-        $validated = $request->validate([
-            'status' => 'sometimes|string|in:generated,locked,paid,cancelled',
-            'notes' => 'sometimes|string|max:1000',
-            'total_earnings' => 'sometimes|numeric|min:0',
-            'total_deductions' => 'sometimes|numeric|min:0',
-            'net_pay' => 'sometimes|numeric',
-        ]);
-
-        try {
-            $payroll = Payroll::findOrFail($id);
-            $payroll->fill($validated);
-            $payroll->save();
-
-            return response()->json([
-                'status' => true,
-                'message' => 'Payroll updated successfully.',
-                'data' => $payroll
-            ]);
-        } catch (Exception $e) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Error updating payroll.',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * ❌ Delete payroll
-     */
-    public function destroy($id)
-    {
-        try {
-            $payroll = Payroll::findOrFail($id);
-            $payroll->delete();
-
-            return response()->json([
-                'status' => true,
-                'message' => 'Payroll deleted successfully.'
-            ]);
-        } catch (Exception $e) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Error deleting payroll.',
-                'error' => $e->getMessage()
-            ], 500);
-        }
+        // Run payroll on the 5th of every month at 03:00 AM
+        $schedule->command('payroll:generate-organization')
+            ->monthlyOn(5, '03:00')
+            ->appendOutputTo(storage_path('logs/payroll_auto.log'));
     }
 }

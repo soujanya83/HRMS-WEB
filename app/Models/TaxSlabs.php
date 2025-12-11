@@ -9,6 +9,7 @@ class TaxSlabs extends Model
     use HasFactory;
 
     protected $fillable = [
+        'organization_id',
         'country_code',
         'financial_year',
         'tax_regime',
@@ -35,5 +36,9 @@ class TaxSlabs extends Model
     public function scopeForCountry($query, $country)
     {
         return $query->where('country_code', $country);
+    }
+    public function organization()
+    {
+        return $this->belongsTo(Organization::class);
     }
 }

@@ -10,6 +10,12 @@ use App\Models\Organization;
 use App\Models\Department;
 use App\Models\Designation;
 use App\Models\Recruitment\Applicant;
+use App\Models\Employee\EmployeeDocument;
+use App\Models\Employee\EmploymentHistory;
+use App\Models\Employee\ProbationPeriod;
+use App\Models\Employee\EmployeeExit;
+use App\Models\Employee\Leave;
+use App\Models\SalaryStructure;
 
 class Employee extends Model
 {
@@ -39,4 +45,10 @@ class Employee extends Model
     {
         return $this->hasMany(Leave::class);
     }
+
+   public function salaryStructure()
+{
+    return $this->hasOne(SalaryStructure::class, 'employee_id', 'id');
+}
+
 }

@@ -15,19 +15,88 @@ use Illuminate\Support\Facades\DB;
 
 class LeaveController extends Controller
 {
- public function index(Request $request): JsonResponse
-{
-    try {
-        // filter by date range
+//  public function index(Request $request): JsonResponse
+// {
+//     try {
+//         // filter by date range
 
-        $query = Leave::with('employee:id,first_name,last_name,personal_email')
-            ->orderBy('id', 'desc');
+//         $query = Leave::with('employee:id,first_name,last_name,personal_email')
+//             ->orderBy('id', 'desc');
            
 
-              if ($request->from && $request->to) {
-            $query->whereBetween('start_date', [$request->from, $request->to]);
+//               if ($request->from && $request->to) {
+//             $query->whereBetween('start_date', [$request->from, $request->to]);
+//         }
+//          $leaves = $query->get();
+
+//         if ($leaves->isEmpty()) {
+//             return response()->json([
+//                 'status' => true,
+//                 'message' => 'No leave requests found',
+//                 'data' => []
+//             ]);
+//         }
+
+//         return response()->json([
+//             'status' => true,
+//             'message' => 'Leaves retrieved successfully',
+//             'data' => $leaves
+//         ]);
+//     } catch (\Exception $e) {
+//         return response()->json([
+//             'status' => false,
+//             'message' => 'Failed to retrieve leaves',
+//             'error' => $e->getMessage()
+//         ], 500);
+//     }
+// }
+
+public function index(Request $request): JsonResponse
+{
+    try {
+        $query = Leave::with([
+                'employee:id,first_name,last_name,personal_email,department_id',
+                'employee.department:id,name'
+            ])
+            ->orderBy('id', 'desc');
+
+        // ✅ SEARCH BY EMPLOYEE NAME (first_name OR last_name)
+        if ($request->filled('employee_name')) {
+            $search = $request->employee_name;
+
+            $query->whereHas('employee', function ($q) use ($search) {
+                $q->where('first_name', 'like', "%{$search}%")
+                  ->orWhere('last_name', 'like', "%{$search}%");
+            });
         }
-         $leaves = $query->get();
+
+        // ✅ FILTER BY STATUS
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        // ✅ FILTER BY LEAVE TYPE
+        if ($request->filled('leave_type')) {
+            $query->where('leave_type', $request->leave_type);
+        }
+
+        // ✅ FILTER BY DEPARTMENT
+        if ($request->filled('department_id')) {
+            $query->whereHas('employee', function ($q) use ($request) {
+                $q->where('department_id', $request->department_id);
+            });
+        }
+
+        // ✅ FILTER BY DATE RANGE
+        if ($request->filled('from') && $request->filled('to')) {
+            $query->whereBetween('start_date', [
+                $request->from,
+                $request->to
+            ]);
+        }
+
+        // ✅ FETCH DATA
+        $leaves = $query->get();
 
         if ($leaves->isEmpty()) {
             return response()->json([
@@ -39,17 +108,60 @@ class LeaveController extends Controller
 
         return response()->json([
             'status' => true,
-            'message' => 'Leaves retrieved successfully',
+            'message' => 'Filtered leave requests retrieved successfully',
             'data' => $leaves
         ]);
+
     } catch (\Exception $e) {
         return response()->json([
             'status' => false,
-            'message' => 'Failed to retrieve leaves',
+            'message' => 'Failed to retrieve leave requests',
             'error' => $e->getMessage()
         ], 500);
     }
 }
+
+
+public function getLeavesSummary(): JsonResponse
+{
+    try {
+        // ✅ Leave Type Summary
+        $typeSummary = Leave::select('leave_type', DB::raw('COUNT(*) as total_leaves'))
+            ->groupBy('leave_type')
+            ->get();
+
+        // ✅ Total leave requests
+        $totalRequests = Leave::count();
+
+        // ✅ Status summary
+        $statusSummary = Leave::select('status', DB::raw('COUNT(*) as total'))
+            ->groupBy('status')
+            ->get()
+            ->pluck('total', 'status'); // converts to {"approved": 10, "pending": 5...}
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Leave summary retrieved successfully',
+            'data' => [
+                'total_requests' => $totalRequests,
+                'status_summary' => [
+                    'pending'  => $statusSummary['pending'] ?? 0,
+                    'approved' => $statusSummary['approved'] ?? 0,
+                    'rejected' => $statusSummary['rejected'] ?? 0,
+                ],
+                'leave_type_summary' => $typeSummary
+            ]
+        ], 200);
+
+    } catch (Exception $e) {
+        return response()->json([
+            'status' => false,
+            'message' => 'Failed to retrieve leave summary',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
+
 
 public function show($id): JsonResponse
 {
@@ -111,7 +223,10 @@ public function store(Request $request, $id = null): JsonResponse{
         }
 
         // Otherwise, create new record
-        $validated['employee_id'] = Auth::id();
+        $employeeId = Employee::where('user_id',Auth::user()->id)->first();
+
+        $validated['employee_id'] =  $employeeId->id;
+        $validated['days_count'] = (new \DateTime($validated['end_date']))->diff(new \DateTime($validated['start_date']))->days + 1;
 
         $leave = Leave::create($validated);
 

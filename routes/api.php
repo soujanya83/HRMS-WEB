@@ -35,6 +35,11 @@ use App\Http\Controllers\API\V1\Employee\TimesheetController;
 use App\Http\Controllers\API\V1\SalaryComponentTypesController;
 use App\Http\Controllers\API\V1\SalaryStructureController;
 use App\Http\Controllers\API\V1\SalaryComponentController;
+use App\Http\Controllers\API\V1\TaxSlabsController;
+use App\Models\Payrolls;
+use App\Http\Controllers\API\V1\PayrollsController;
+use App\Http\Controllers\API\V1\SalaryRevisionsController as SalaryRevisions;
+use App\Http\Controllers\API\V1\BonusesController as BonusController;
 
 Route::prefix('v1')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
@@ -68,8 +73,26 @@ Route::prefix('v1')->group(function () {
         Route::patch('organization-holiday/{id}/partial', [HolidayController::class, 'partialUpdate']);
         Route::apiResource('employee-overtime', OvertimeRequestController::class);
         Route::apiResource('organization/salarycomponents/types', SalaryComponentTypesController::class);
-        Route::apiResource('organization/salarycomponents', SalaryComponentController::class);
+        Route::apiResource('organization/salary/components', SalaryComponentController::class);
         Route::apiResource('organization/employee/salary', SalaryStructureController::class);
+        Route::apiResource('organization/tax-slabs', TaxSlabsController::class);
+        Route::apiResource('payrolls', PayrollsController::class);
+        Route::apiResource('salary-revisions', SalaryRevisions::class);
+
+        Route::prefix('bonuses')->group(function () {
+
+            Route::get('/', [BonusController::class, 'index']);
+            Route::post('/', [BonusController::class, 'store']);
+            Route::get('/{id}', [BonusController::class, 'show']);
+            Route::put('/{id}', [BonusController::class, 'update']);
+            Route::delete('/{id}', [BonusController::class, 'destroy']);
+
+            // Approval actions
+            Route::post('/{id}/approve', [BonusController::class, 'approve']);
+            Route::post('/{id}/reject', [BonusController::class, 'reject']);
+        });
+
+
 
         Route::apiResource('organization/employee/salarystructure', SalaryStructureController::class);
 
@@ -225,11 +248,15 @@ Route::prefix('v1')->group(function () {
             Route::post('/clock-in', [AttendanceController::class, 'clockIn']);
             Route::post('/clock-out', [AttendanceController::class, 'clockOut']);
             Route::delete('/destroy/{attendance}', [AttendanceController::class, 'destroy']);
+            Route::get('/get-attendance/{employee_id}/{date}', [AttendanceController::class, 'getEmployeeAttendance']);
+            Route::put('/approve-or-reject-employee-attendance-change-request/{Id}', [AttendanceController::class, 'approveAttendanceChange']);
+            Route::get('/manual-change-requests', [AttendanceController::class, 'getAttendancechangeRequests']);
 
             // Extra work on holiday
             Route::post('/work-on-holiday', [AttendanceController::class, 'RequestWorkOnHoliday']);
             Route::get('/work-on-holiday', [AttendanceController::class, 'ShowHolidayRequests']);
             Route::post('/approve-work-on-holiday', [AttendanceController::class, 'ApproveWorkOnHoliday']);
+            Route::get('/employee-attendance-summary', [AttendanceController::class, 'EmployeeAttendanceSummary']);
         });
 
         Route::prefix('leave')->group(function () {
@@ -241,85 +268,83 @@ Route::prefix('v1')->group(function () {
             Route::get('/show/{id}', [LeaveController::class, 'show']);
             Route::delete('/destroy/{id}', [LeaveController::class, 'destroy']);
             Route::get('/leaveBalance', [LeaveController::class, 'leaveBalance']);
+            Route::get('/leaves-summary', [LeaveController::class, 'getLeavesSummary']);
         });
 
-                    // Employee Documents
-            Route::prefix('employee-documents')->group(function () {
-                Route::get('/', [EmployeeDocumentController::class, 'index']);
-                Route::post('/', [EmployeeDocumentController::class, 'store']);
-                Route::get('/{id}', [EmployeeDocumentController::class, 'show']);
-                Route::put('/{id}', [EmployeeDocumentController::class, 'update']);
-                Route::patch('/{id}', [EmployeeDocumentController::class, 'update']);
-                Route::delete('/{id}', [EmployeeDocumentController::class, 'destroy']);
-                Route::get('/by-employee/{employeeId}', [EmployeeDocumentController::class, 'byEmployee']);
-            });
+        // Employee Documents
+        Route::prefix('employee-documents')->group(function () {
+            Route::get('/', [EmployeeDocumentController::class, 'index']);
+            Route::post('/', [EmployeeDocumentController::class, 'store']);
+            Route::get('/{id}', [EmployeeDocumentController::class, 'show']);
+            Route::put('/{id}', [EmployeeDocumentController::class, 'update']);
+            Route::patch('/{id}', [EmployeeDocumentController::class, 'update']);
+            Route::delete('/{id}', [EmployeeDocumentController::class, 'destroy']);
+            Route::get('/by-employee/{employeeId}', [EmployeeDocumentController::class, 'byEmployee']);
+        });
 
-            // Employee Exit
-            Route::prefix('employee-exits')->group(function () {
-                Route::get('/', [EmployeeExitController::class, 'index']);
-                Route::post('/', [EmployeeExitController::class, 'store']);
-                Route::get('/{id}', [EmployeeExitController::class, 'show']);
-                Route::put('/{id}', [EmployeeExitController::class, 'update']);
-                Route::patch('/{id}', [EmployeeExitController::class, 'update']);
-                Route::delete('/{id}', [EmployeeExitController::class, 'destroy']);
-                Route::get('/by-employee/{employeeId}', [EmployeeExitController::class, 'byEmployee']);
-            });
+        // Employee Exit
+        Route::prefix('employee-exits')->group(function () {
+            Route::get('/', [EmployeeExitController::class, 'index']);
+            Route::post('/', [EmployeeExitController::class, 'store']);
+            Route::get('/{id}', [EmployeeExitController::class, 'show']);
+            Route::put('/{id}', [EmployeeExitController::class, 'update']);
+            Route::patch('/{id}', [EmployeeExitController::class, 'update']);
+            Route::delete('/{id}', [EmployeeExitController::class, 'destroy']);
+            Route::get('/by-employee/{employeeId}', [EmployeeExitController::class, 'byEmployee']);
+        });
 
-            // Employment History
-            Route::prefix('employment-history')->group(function () {
-                Route::get('/', [EmploymentHistoryController::class, 'index']);
-                Route::post('/', [EmploymentHistoryController::class, 'store']);
-                Route::get('/{id}', [EmploymentHistoryController::class, 'show']);
-                Route::put('/{id}', [EmploymentHistoryController::class, 'update']);
-                Route::patch('/{id}', [EmploymentHistoryController::class, 'update']);
-                Route::delete('/{id}', [EmploymentHistoryController::class, 'destroy']);
-                Route::get('/by-employee/{employeeId}', [EmploymentHistoryController::class, 'byEmployee']);
-            });
+        // Employment History
+        Route::prefix('employment-history')->group(function () {
+            Route::get('/', [EmploymentHistoryController::class, 'index']);
+            Route::post('/', [EmploymentHistoryController::class, 'store']);
+            Route::get('/{id}', [EmploymentHistoryController::class, 'show']);
+            Route::put('/{id}', [EmploymentHistoryController::class, 'update']);
+            Route::patch('/{id}', [EmploymentHistoryController::class, 'update']);
+            Route::delete('/{id}', [EmploymentHistoryController::class, 'destroy']);
+            Route::get('/by-employee/{employeeId}', [EmploymentHistoryController::class, 'byEmployee']);
+        });
 
-            // Probation Periods
-            Route::prefix('probation-periods')->group(function () {
-                Route::get('/', [ProbationPeriodController::class, 'index']);
-                Route::post('/', [ProbationPeriodController::class, 'store']);
-                Route::get('/{id}', [ProbationPeriodController::class, 'show']);
-                Route::put('/{id}', [ProbationPeriodController::class, 'update']);
-                Route::patch('/{id}', [ProbationPeriodController::class, 'update']);
-                Route::delete('/{id}', [ProbationPeriodController::class, 'destroy']);
-                Route::get('/by-employee/{employeeId}', [ProbationPeriodController::class, 'byEmployee']);
-            });
-
-
-            Route::prefix('offboarding-tasks')->group(function () {
-                Route::get('/', [OffboardingTaskController::class, 'index']);
-                Route::post('/', [OffboardingTaskController::class, 'store']);
-                Route::get('/{id}', [OffboardingTaskController::class, 'show']);
-                Route::put('/{id}', [OffboardingTaskController::class, 'update']);
-                Route::patch('/{id}', [OffboardingTaskController::class, 'update']);
-                Route::delete('/{id}', [OffboardingTaskController::class, 'destroy']);
-                Route::patch('/{id}/complete', [OffboardingTaskController::class, 'markCompleted']);
-                Route::get('/overdue/list', [OffboardingTaskController::class, 'overdue']);
-            });
-
-            Route::prefix('offboarding-templates')->group(function () {
-                Route::get('/', [OffboardingTemplateController::class, 'index']);
-                Route::post('/', [OffboardingTemplateController::class, 'store']);
-                Route::get('/{id}', [OffboardingTemplateController::class, 'show']);
-                Route::put('/{id}', [OffboardingTemplateController::class, 'update']);
-                Route::patch('/{id}', [OffboardingTemplateController::class, 'update']);
-                Route::delete('/{id}', [OffboardingTemplateController::class, 'destroy']);
-                Route::post('/{id}/clone', [OffboardingTemplateController::class, 'clone']);
-            });
-
-            Route::prefix('offboarding-template-tasks')->group(function () {
-                Route::get('/', [OffboardingTemplateTaskController::class, 'index']);
-                Route::post('/', [OffboardingTemplateTaskController::class, 'store']);
-                Route::get('/{id}', [OffboardingTemplateTaskController::class, 'show']);
-                Route::put('/{id}', [OffboardingTemplateTaskController::class, 'update']);
-                Route::patch('/{id}', [OffboardingTemplateTaskController::class, 'update']);
-                Route::delete('/{id}', [OffboardingTemplateTaskController::class, 'destroy']);
-                Route::get('/template/{templateId}', [OffboardingTemplateTaskController::class, 'byTemplate']);
-            });
+        // Probation Periods
+        Route::prefix('probation-periods')->group(function () {
+            Route::get('/', [ProbationPeriodController::class, 'index']);
+            Route::post('/', [ProbationPeriodController::class, 'store']);
+            Route::get('/{id}', [ProbationPeriodController::class, 'show']);
+            Route::put('/{id}', [ProbationPeriodController::class, 'update']);
+            Route::patch('/{id}', [ProbationPeriodController::class, 'update']);
+            Route::delete('/{id}', [ProbationPeriodController::class, 'destroy']);
+            Route::get('/by-employee/{employeeId}', [ProbationPeriodController::class, 'byEmployee']);
+        });
 
 
+        Route::prefix('offboarding-tasks')->group(function () {
+            Route::get('/', [OffboardingTaskController::class, 'index']);
+            Route::post('/', [OffboardingTaskController::class, 'store']);
+            Route::get('/{id}', [OffboardingTaskController::class, 'show']);
+            Route::put('/{id}', [OffboardingTaskController::class, 'update']);
+            Route::patch('/{id}', [OffboardingTaskController::class, 'update']);
+            Route::delete('/{id}', [OffboardingTaskController::class, 'destroy']);
+            Route::patch('/{id}/complete', [OffboardingTaskController::class, 'markCompleted']);
+            Route::get('/overdue/list', [OffboardingTaskController::class, 'overdue']);
+        });
 
+        Route::prefix('offboarding-templates')->group(function () {
+            Route::get('/', [OffboardingTemplateController::class, 'index']);
+            Route::post('/', [OffboardingTemplateController::class, 'store']);
+            Route::get('/{id}', [OffboardingTemplateController::class, 'show']);
+            Route::put('/{id}', [OffboardingTemplateController::class, 'update']);
+            Route::patch('/{id}', [OffboardingTemplateController::class, 'update']);
+            Route::delete('/{id}', [OffboardingTemplateController::class, 'destroy']);
+            Route::post('/{id}/clone', [OffboardingTemplateController::class, 'clone']);
+        });
+
+        Route::prefix('offboarding-template-tasks')->group(function () {
+            Route::get('/', [OffboardingTemplateTaskController::class, 'index']);
+            Route::post('/', [OffboardingTemplateTaskController::class, 'store']);
+            Route::get('/{id}', [OffboardingTemplateTaskController::class, 'show']);
+            Route::put('/{id}', [OffboardingTemplateTaskController::class, 'update']);
+            Route::patch('/{id}', [OffboardingTemplateTaskController::class, 'update']);
+            Route::delete('/{id}', [OffboardingTemplateTaskController::class, 'destroy']);
+            Route::get('/template/{templateId}', [OffboardingTemplateTaskController::class, 'byTemplate']);
+        });
     });
 });

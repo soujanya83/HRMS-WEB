@@ -86,7 +86,13 @@ protected function schedule(Schedule $schedule): void
         $schedule->command('attendance:mark-absent', [$rule->organization_id])
             ->dailyAt($absentTime)
             ->appendOutputTo(storage_path("logs/attendance_absent_org_{$rule->organization_id}.log"));
-    }
+   
+   $schedule->command('payroll:generate-organization')
+        ->monthlyOn(5, '03:00')
+        ->appendOutputTo(storage_path('logs/payroll_auto.log'));
+   
+   
+        }
 }
 
     /**

@@ -20,7 +20,8 @@ class SalaryStructure extends Model
         'grade_level',
         'base_salary',
         'currency',
-        'is_active'
+        'is_active',
+        'salary_structure_name'
     ];
 
     protected $casts = [
@@ -35,12 +36,30 @@ class SalaryStructure extends Model
 
     public function employee()
     {
-        return $this->belongsTo(Employee::class);
+        return $this->belongsTo(Employee::class, 'employee_id', 'id');
     }
 
+
+    // public function components()
+    // {
+    //     return $this->hasMany(SalaryStructureComponents::class);
+    // }
     public function components()
+{
+    return $this->hasMany(SalaryStructureComponents::class, 'salary_structure_id', 'id');
+}
+
+
+    public function componentType()
     {
-        return $this->hasMany(SalaryStructureComponents::class);
+        return $this->hasManyThrough(
+            SalaryComponentTypes::class,
+            SalaryStructureComponents::class,
+            'salary_structure_id', // Foreign key on SalaryStructureComponents table
+            'id', // Foreign key on SalaryComponentTypes table
+            'id', // Local key on SalaryStructure table
+            'component_type_id' // Local key on SalaryStructureComponents table
+        );
     }
 
     public function revisions()
