@@ -19,6 +19,16 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Hash;
+use App\Mail\WelcomeEmployee;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Auth\Passwords\PasswordBroker;
+use Throwable;
+
 use Exception;
 
 class EmployeeController extends Controller
@@ -58,54 +68,171 @@ class EmployeeController extends Controller
         }
     }
 
-    public function store(Request $request): JsonResponse
-    {
-        try {
-            $validated = $request->validate([
-                'organization_id' => 'required|exists:organizations,id',
-                'user_id' => 'required|exists:users,id|unique:employees,user_id',
-                'applicant_id' => 'nullable|exists:applicants,id|unique:employees,applicant_id',
-                'department_id' => 'required|exists:departments,id',
-                'designation_id' => 'required|exists:designations,id',
-                'reporting_manager_id' => 'nullable|exists:employees,id',
-                'employee_code' => 'required|string|unique:employees,employee_code|max:50',
-                'first_name' => 'required|string|max:190',
-                'last_name' => 'required|string|max:190',
-                'personal_email' => 'required|email|max:190|unique:employees,personal_email',
-                'date_of_birth' => 'required|date',
-                'gender' => 'required|in:Male,Female,Other',
-                'phone_number' => 'required|string|max:20',
-                'address' => 'required|string|max:1000',
-                'joining_date' => 'required|date',
-                'employment_type' => 'required|in:Full-time,Part-time,Contract,Internship',
-                'status' => 'sometimes|in:Active,On Probation,On Leave,Terminated',
-                'tax_file_number' => 'nullable|string|max:100',
-                'superannuation_fund_name' => 'nullable|string|max:255',
-                'superannuation_member_number' => 'nullable|string|max:100',
-                'bank_bsb' => 'nullable|string|max:10',
-                'bank_account_number' => 'nullable|string|max:30',
-                'visa_type' => 'nullable|string|max:50',
-                'visa_expiry_date' => 'nullable|date',
-                'emergency_contact_name' => 'nullable|string|max:255',
-                'emergency_contact_phone' => 'nullable|string|max:30',
-            ]);
+   public function store(Request $request): JsonResponse
+{
+    try {
+        // Build rules dynamically to allow ignoring uniqueness on users when user_id provided
+        $userId = $request->input('user_id');
 
-            $validated['status'] = $validated['status'] ?? 'On Probation';
+        $rules = [
+            'organization_id' => ['required', 'exists:organizations,id'],
 
-            $employee = Employee::create($validated);
+            // user_id optional (if provided must exist and not already linked to an employee)
+            'user_id' => ['nullable', 'exists:users,id', Rule::unique('employees','user_id')],
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Employee created successfully',
-                'data' => $employee
-            ], 201);
-        } catch (ValidationException $e) {
-            return $this->validationError($e);
-        } catch (Exception $e) {
-            return $this->serverError('Failed to create employee', $e);
+            'applicant_id' => ['nullable', 'exists:applicants,id', Rule::unique('employees','applicant_id')],
+            'department_id' => ['required', 'exists:departments,id'],
+            'designation_id' => ['required', 'exists:designations,id'],
+            'reporting_manager_id' => ['nullable', 'exists:employees,id'],
+            'employee_code' => ['required', 'string', 'max:50', Rule::unique('employees','employee_code')],
+            'first_name' => ['required', 'string', 'max:190'],
+            'last_name' => ['required', 'string', 'max:190'],
+
+            // personal_email needs to be unique in users table unless we're using an existing user_id
+            'personal_email' => ['required', 'email', 'max:190'],
+
+            'date_of_birth' => ['required','date'],
+            'gender' => ['required', Rule::in(['Male','Female','Other'])],
+            'phone_number' => ['required','string','max:20'],
+            'address' => ['required','string','max:1000'],
+            'joining_date' => ['required','date'],
+            'employment_type' => ['required', Rule::in(['Full-time','Part-time','Contract','Internship'])],
+            'status' => ['nullable', Rule::in(['Active','On Probation','On Leave','Terminated'])],
+
+            'tax_file_number' => ['nullable','string','max:100'],
+            'superannuation_fund_name' => ['nullable','string','max:255'],
+            'superannuation_member_number' => ['nullable','string','max:100'],
+
+            'bank_bsb' => ['nullable','string','max:10'],
+            'bank_account_number' => ['nullable','string','max:30'],
+
+            'visa_type' => ['nullable','string','max:50'],
+            'visa_expiry_date' => ['nullable','date'],
+
+            'emergency_contact_name' => ['nullable','string','max:255'],
+            'emergency_contact_phone' => ['nullable','string','max:30'],
+        ];
+
+        // If user_id provided, allow personal_email to match that user's email (ignore unique on that user id)
+        if ($userId) {
+            $rules['personal_email'][] = Rule::unique('users','email')->ignore($userId);
+        } else {
+            // if no user_id, personal_email must not exist in users table
+            $rules['personal_email'][] = Rule::unique('users','email');
         }
-    }
 
+        // Also keep employees.personal_email unique (DB might enforce it)
+        $rules['personal_email'][] = Rule::unique('employees','personal_email');
+
+        $validated = $request->validate($rules);
+
+        // Default status
+        $validated['status'] = $validated['status'] ?? 'On Probation';
+
+        // Use DB transaction to ensure both user and employee are created atomically
+        $result = DB::transaction(function () use ($validated, $userId) {
+
+            $createdUser = null;
+            $rawPassword = null;
+
+            if ($userId) {
+                // Use existing user
+                $user = User::findOrFail($userId);
+
+                // Ensure provided personal_email matches the user's email (to avoid mismatch)
+                if ($user->email !== $validated['personal_email']) {
+                    throw ValidationException::withMessages([
+                        'personal_email' => ['Provided personal_email does not match the existing user email.']
+                    ]);
+                }
+
+                $createdUser = $user;
+            } else {
+                // Create new user
+                $rawPassword = Str::random(10);
+                $createdUser = User::create([
+                    'name' => $validated['first_name'] . ' ' . $validated['last_name'],
+                    'email' => $validated['personal_email'],
+                    'password' => Hash::make($rawPassword),
+                ]);
+            }
+
+            // Attach organization-specific role using pivot table.
+            // You told me role id 7 corresponds to "employee".
+            $organizationId = $validated['organization_id'];
+
+            $createdUser->assignRoleForOrganization('employee', $organizationId);
+
+
+            // Prepare employee data
+            $employeeData = $validated;
+            $employeeData['user_id'] = $createdUser->id;
+
+            // Create Employee record
+            $employee = Employee::create($employeeData);
+
+            return [
+                'user' => $createdUser,
+                'employee' => $employee,
+                'raw_password' => $rawPassword, // null if existing user was used
+            ];
+        });
+
+                // ---- SEND EMAIL (after transaction) ----
+        try {
+            $createdUser = $result['user'];
+            $rawPassword = $result['raw_password'] ?? null;
+            $inviteLink = null;
+
+            // Option A: generate password reset invite link (preferred secure flow)
+            if ($rawPassword) {
+                // create reset token and link
+               $token = app(PasswordBroker::class)->createToken($createdUser);
+                $frontendBase = config('app.url'); // ideally use FRONTEND_URL in env
+                $inviteLink = rtrim($frontendBase, '/') . '/password/reset/' . $token . '?email=' . urlencode($createdUser->email);
+            }
+
+            // Build mailable - pass rawPassword OR inviteLink (or both).
+            $mailable = new WelcomeEmployee($createdUser, $rawPassword, $inviteLink);
+
+            // Queue the mail (recommended) so api response returns quickly
+            // Mail::send($createdUser->email)->queue($mailable);
+
+            // If you don't have queue configured and want to send immediately, use:
+            Mail::to($createdUser->email)->send($mailable);
+
+        } catch (Throwable $mailEx) {
+            // Log mail error but do NOT fail the whole request
+            Log::error('Failed to send welcome email: ' . $mailEx->getMessage(), [
+                'user_id' => $result['user']->id ?? null,
+            ]);
+        }
+
+
+
+        // Return success (include raw_password only when a user was created)
+        $responseData = [
+            'success' => true,
+            'message' => 'Employee created successfully',
+            'data' => [
+                'user' => $result['user'],
+                'employee' => $result['employee'],
+            ]
+        ];
+
+        if (!empty($result['raw_password'])) {
+            $responseData['data']['generated_password'] = $result['raw_password'];
+        }
+
+        return response()->json($responseData, 201);
+
+    } catch (ValidationException $e) {
+        return $this->validationError($e);
+
+    } catch (Exception $e) {
+        return $this->serverError('Failed to create employee', $e);
+    }
+}
     public function update(Request $request, $id): JsonResponse
     {
         try {
