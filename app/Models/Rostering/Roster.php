@@ -14,6 +14,7 @@ class Roster extends Model
 
     protected $fillable = [
         'organization_id',
+        'roster_period_id',
         'employee_id',
         'shift_id',
         'roster_date',
@@ -60,5 +61,10 @@ class Roster extends Model
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function period()
+    {
+        return $this->belongsTo(RosterPeriod::class, 'roster_period_id');
     }
 }

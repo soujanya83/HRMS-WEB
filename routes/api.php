@@ -25,6 +25,7 @@ use App\Http\Controllers\API\V1\Employee\OffboardingTemplateController;
 use App\Http\Controllers\API\V1\Employee\OffboardingTemplateTaskController;
 use App\Http\Controllers\API\V1\Rostering\ShiftController;
 use App\Http\Controllers\API\V1\Rostering\RosterController;
+use App\Http\Controllers\API\V1\Rostering\RosterPeriodController;
 use App\Http\Controllers\API\V1\Rostering\ShiftSwapRequestController;
 use App\Http\Controllers\API\V1\Performance\PerformanceReviewCycleController;
 use App\Http\Controllers\API\V1\Performance\PerformanceGoalController;
@@ -53,11 +54,46 @@ use App\Http\Controllers\API\V1\Xero\PayrunController;
 use App\Http\Controllers\API\V1\Xero\XeroConnectionController;
 use App\Http\Controllers\API\V1\Xero\XeroEmployeeController;
 
+use App\Http\Controllers\API\V1\{
+    RoleController,
+    PermissionController,
+    RolePermissionController,
+    UserOrganizationRoleController,
+    MeController
+};
+
 Route::prefix('v1')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
 
     Route::middleware('auth:sanctum')->group(function () {
+
+
+
+            Route::get('/roles', [RoleController::class, 'index']);
+            Route::post('/roles', [RoleController::class, 'store']);
+            Route::put('/roles/{id}', [RoleController::class, 'update']);
+            Route::delete('/roles/{id}', [RoleController::class, 'destroy']);
+
+            // Permissions
+            Route::get('/permissions', [PermissionController::class, 'index']);
+            Route::post('/permissions', [PermissionController::class, 'store']);
+            Route::put('/permissions/{id}', [PermissionController::class, 'update']);
+            Route::delete('/permissions/{id}', [PermissionController::class, 'destroy']);
+
+            // Role ↔ Permissions
+            Route::get('/roles/{roleId}/permissions', [RolePermissionController::class, 'index']);
+            Route::post('/roles/{roleId}/permissions', [RolePermissionController::class, 'sync']);
+
+            // User ↔ Org Roles
+            Route::get('/organizations/{orgId}/users/{userId}/roles', [UserOrganizationRoleController::class, 'index']);
+            Route::post('/organizations/{orgId}/users/{userId}/roles', [UserOrganizationRoleController::class, 'store']);
+            Route::delete('/organizations/{orgId}/users/{userId}/roles/{roleName}', [UserOrganizationRoleController::class, 'destroy']);
+
+            // Me (Frontend)
+            Route::get('/me/roles/{orgId}', [MeController::class, 'roles']);
+            Route::get('/me/permissions/{orgId}', [MeController::class, 'permissions']);
+
 
 
 
@@ -395,7 +431,19 @@ Route::prefix('v1')->group(function () {
             Route::delete('/{id}', [RosterController::class, 'destroy']);
             Route::post('/bulk', [RosterController::class, 'bulkStore']);
             Route::get('/employee/{employeeId}', [RosterController::class, 'byEmployee']);
+            Route::post('bulk-assign', [RosterController::class, 'bulkAssign']);
+            Route::get('period/{periodId}', [RosterController::class, 'byPeriod']);
         });
+
+
+         Route::prefix('periods')->group(function () {
+        Route::get('/', [RosterPeriodController::class, 'index']);
+        Route::post('/', [RosterPeriodController::class, 'store']);
+        Route::post('{id}/publish', [RosterPeriodController::class, 'publish']);
+        Route::post('{id}/lock', [RosterPeriodController::class, 'lock']);
+    });
+
+
 
         Route::prefix('shift-swap-requests')->group(function () {
             Route::get('/', [ShiftSwapRequestController::class, 'index']);

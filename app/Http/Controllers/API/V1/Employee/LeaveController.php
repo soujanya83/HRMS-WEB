@@ -555,7 +555,7 @@ class LeaveController extends Controller
 
             return $response->json();
         } catch (\Exception $e) {
-            \Log::error("Update Leave in Xero Failed: " . $e->getMessage());
+            Log::error("Update Leave in Xero Failed: " . $e->getMessage());
             return false;
         }
     }
