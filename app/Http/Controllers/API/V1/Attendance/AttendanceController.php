@@ -6,16 +6,25 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Employee\Attendance;
 use App\Models\Employee\Employee;
+use App\Models\Employee\Timesheet;
 use App\Models\Employee\WorkOnHoliday;
 use App\Models\HolidayModel;
 use App\Models\manually_adjusted_attendance;
 use App\Models\OrganizationAttendanceRule;
+use App\Models\Rostering\Roster;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\Rule;
 use Carbon\Carbon;
 use Illuminate\Validation\Factory;
 use Illuminate\Support\Facades\Auth;
-
+use Illuminate\Support\Facades\Log;
+use App\Models\Rostering\Shift;
+use App\Models\XeroConnection;
+use App\Models\EmployeeXeroConnection;
+use App\Models\XeroTimesheet;
+use Illuminate\Support\Facades\Http;
+use App\Http\Controllers\API\V1\Employee\TimesheetController;
+use App\Models\Payrolls;
 
 class AttendanceController extends Controller
 {
@@ -88,7 +97,7 @@ class AttendanceController extends Controller
             }
             $query->whereDate('date', '<=', $endDate);
         }
-        
+
         // ---------------------------------------------------------
         // Final Pagination
         // ---------------------------------------------------------
@@ -243,7 +252,7 @@ class AttendanceController extends Controller
     /**
      * Store a newly created attendance record.
      */
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, TimesheetController $Timesheet): JsonResponse
     {
         try {
             // Validate input first (timezone handling comes after)
@@ -255,6 +264,7 @@ class AttendanceController extends Controller
                 'status' => ['required', Rule::in(['present', 'absent', 'late', 'half_day', 'on_leave'])],
                 'notes' => ['nullable', 'string', 'max:500'],
             ]);
+            // dd($validated);
 
             // Fetch employee and determine timezone (Australian default if not set)
             $employee = Employee::with('organization:id,timezone') // Assuming Employee has belongsTo Organization
@@ -262,35 +272,50 @@ class AttendanceController extends Controller
 
             $timezone = $employee->organization->timezone ?? 'Australia/Sydney'; // Default to Sydney (AEST/AEDT)
 
+
+
             // Parse and adjust date/time to Australian timezone
             $dateInTz = Carbon::parse($validated['date'])->setTimezone($timezone)->format('Y-m-d');
+
 
             // Adjust times if provided (combine with date, apply TZ, extract H:i)
             $checkInTime = $validated['check_in']
                 ? Carbon::createFromFormat('Y-m-d H:i', "{$dateInTz} {$validated['check_in']}")->setTimezone($timezone)->format('H:i')
                 : null;
+            // dd($checkInTime);
 
             $is_late = 0;
             if ($checkInTime) {
+                // dd('here');
                 $attendanceRule = OrganizationAttendanceRule::where('organization_id', $employee->organization_id)
                     ->first();
+                $roster = Roster::where('employee_id', $employee->id)->whereDate('roster_date', $request->date)->pluck('shift_id');
+                $shift = Shift::whereIn('id', $roster)->first();
+                // dd($shift);
 
                 if ($attendanceRule) {
-                    $scheduledCheckIn = Carbon::createFromFormat('H:i', $attendanceRule->check_in);
+                    // dd($shift->check_in);
+                    $scheduledCheckIn = Carbon::createFromFormat('H:i:s', $shift->start_time);
+                    // dd('scheduledCheckIn: ' . $scheduledCheckIn);
                     $actualCheckIn = Carbon::createFromFormat('H:i', $checkInTime);
-
+                    // dd(['scheduledCheckIn: ' => $scheduledCheckIn, 'actualCheckIn: ' => $actualCheckIn]);
                     $lateGraceMinutes = $attendanceRule->late_grace_minutes ?? 0;
                     $gracePeriodEnd = $scheduledCheckIn->copy()->addMinutes($lateGraceMinutes);
-
+                    // dd('attendance rule found');
                     if ($actualCheckIn->greaterThan($gracePeriodEnd)) {
                         $is_late = 1; // Mark as late
                     }
                 }
             }
 
+
             $checkOutTime = $validated['check_out']
                 ? Carbon::createFromFormat('Y-m-d H:i', "{$dateInTz} {$validated['check_out']}")->setTimezone($timezone)->format('H:i')
                 : null;
+
+            $totalWorkingHours = $checkOutTime && $checkInTime
+                ? Carbon::createFromFormat('H:i', $checkInTime)->diffInMinutes(Carbon::createFromFormat('H:i', $checkOutTime)) / 60
+                : 0;
 
             // Prepare data with TZ-adjusted values
             $attendanceData = [
@@ -298,6 +323,7 @@ class AttendanceController extends Controller
                 'date' => $dateInTz,
                 'check_in' => $checkInTime,
                 'check_out' => $checkOutTime,
+                'total_work_hours' => $totalWorkingHours,
                 'status' => $validated['status'],
                 'notes' => $validated['notes'] ?? null,
                 'is_late' => $is_late,
@@ -316,6 +342,24 @@ class AttendanceController extends Controller
             }
 
             $attendance = \App\Models\Employee\Attendance::create($attendanceData);
+
+            $payroll = Payrolls::where('employee_id', $employee->id)
+                ->where('payment_status', 'processed')
+                ->orderBy('to_date', 'desc')
+                ->first();
+
+            if ($payroll) {
+                $lastPayrollDate = Carbon::parse($payroll->to_date);
+            } else {
+                // No payroll ever → use JOINING DATE
+                $lastPayrollDate = Carbon::parse($employee->joining_date);
+            }
+
+            if ($this->shouldTriggerPayroll($employee, $lastPayrollDate)) {
+                // ⚠ FIXED: You were incorrectly passing $employee → must pass $attendance
+                $this->syncTimesheetToXero($attendance, $lastPayrollDate);
+            }
+
 
             return response()->json([
                 'success' => true,
@@ -346,6 +390,426 @@ class AttendanceController extends Controller
             ], 500);
         }
     }
+
+
+    public function shouldTriggerPayroll($employee, $lastPayroll)
+    {
+
+        $today = Carbon::today();
+
+        switch (strtolower($employee->payfrequency)) {
+
+
+            case 'weekly':
+                $nextPeriodEnd = $lastPayroll->copy()->addDays(7);
+                break;
+
+            case 'fortnightly':
+                $nextPeriodEnd = $lastPayroll->copy()->addDays(14);
+
+                break;
+
+            case 'monthly':
+                // If last to_date = 2025-01-31 → next = 2025-02-28 (or 29 leap year)
+                $nextPeriodEnd = $lastPayroll->copy()->addMonthNoOverflow()->endOfMonth();
+                break;
+
+            default:
+                return true;
+        }
+
+        // Trigger payroll if today matches next period end
+
+        return $today->isSameDay($nextPeriodEnd);
+    }
+
+    // public function syncTimesheetToXero($attendance, $lastPayroll)
+    // {
+    //     try {
+
+    //         $employee = Employee::find($attendance->employee_id);
+
+    //         $xeroConnection = XeroConnection::where('organization_id', $employee->organization_id)
+    //             ->where('is_active', 1)
+    //             ->first();
+
+    //         if (!$xeroConnection) {
+    //             throw new \Exception("No active Xero connection");
+    //         }
+
+    //         $employeeXeroConnection = EmployeeXeroConnection::where('employee_id', $employee->id)
+    //             ->where('xero_connection_id', $xeroConnection->id)
+    //             ->first();
+
+    //         if (!$employeeXeroConnection || !$employeeXeroConnection->xero_employee_id) {
+    //             throw new \Exception("Xero employee mapping not found");
+    //         }
+
+
+    //         $calendarId = $this->getPayrollCallender($employeeXeroConnection);
+    //         dd($calendarId['calendar']);
+
+    //         // ----------------------------------------------
+    //         // DETERMINE PAYFREQUENCY
+    //         // ----------------------------------------------
+    //         $payFreq = strtolower($employee->payfrequency);
+    //         $lastPeriodEnd = Carbon::parse($lastPayroll);
+
+    //         if ($payFreq === 'weekly') {
+
+    //             $startPeriod = $lastPeriodEnd->copy()->addDay();          // next day after last payroll
+    //             $endPeriod   = $startPeriod->copy()->addDays(6);           // 7 days total
+    //             $totalDays   = 7;
+    //         } elseif ($payFreq === 'fortnightly') {
+
+    //             $startPeriod = $lastPeriodEnd->copy()->addDay();
+    //             $endPeriod   = $startPeriod->copy()->addDays(13);          // 14 days
+    //             $totalDays   = 14;
+    //         } elseif ($payFreq === 'monthly') {
+
+    //             $startPeriod = $lastPeriodEnd->copy()->addDay();
+    //             $endPeriod   = $startPeriod->copy()->endOfMonth();         // last day of next month
+    //             $totalDays   = $startPeriod->daysInMonth;
+    //         } else {
+    //             throw new \Exception("Invalid payfrequency for employee.");
+    //         }
+
+    //         // ----------------------------------------------
+    //         // INITIALIZE TIMESHEET HOURS ARRAY
+    //         // ----------------------------------------------
+    //         $units = array_fill(0, $totalDays, 0);
+
+    //         // ----------------------------------------------
+    //         // MAP ATTENDANCE DATE TO INDEX
+    //         // ----------------------------------------------
+    //         $attendanceDate = Carbon::parse($attendance->date);
+
+    //         // Example: Find where attendance date falls in the period
+    //         // $dayIndex = $attendanceDate->diffInDays($startPeriod);
+    //         $dayIndex = $startPeriod->diffInDays($attendanceDate);
+
+
+    //         if ($dayIndex >= 0 && $dayIndex < $totalDays) {
+    //             $units[$dayIndex] = $attendance->total_work_hours;   // Fill worked hours
+    //         }
+
+    //         // ----------------------------------------------
+    //         // FETCH EARNINGS RATE
+    //         // ----------------------------------------------
+    //         $xeroData = json_decode($employeeXeroConnection->xero_data, true);
+
+    //         $earningRateId =
+    //             $xeroData['Employees'][0]['OrdinaryEarningsRateID']
+    //             ?? ($xeroData['Employees'][0]['PayTemplate']['EarningsLines'][0]['EarningsRateID'] ?? null);
+
+    //         if (!$earningRateId) {
+    //             throw new \Exception("EarningsRateID not found in Xero employee data.");
+    //         }
+
+    //         // dd($earningRateId);
+
+    //         if (!$earningRateId) {
+    //             throw new \Exception("EarningsRateID missing for employee.");
+    //         }
+
+    //         // ----------------------------------------------
+    //         // BUILD PAYLOAD (BASED ON PAYFREQUENCY)
+    //         // ----------------------------------------------
+    //         $payload = [
+    //             [
+    //                 "EmployeeID" => $employeeXeroConnection->xero_employee_id,
+    //                 "StartDate"  => "/Date(" . ($startPeriod->timestamp * 1000) . "+0000)/",
+    //                 "EndDate"    => "/Date(" . ($endPeriod->timestamp * 1000) . "+0000)/",
+    //                 "Status"     => "DRAFT",
+    //                 "TimesheetLines" => [
+    //                     [
+    //                         "EarningsRateID" => $earningRateId,
+    //                         "NumberOfUnits"  => $units
+    //                     ]
+    //                 ]
+    //             ]
+    //         ];
+
+    //         // ----------------------------------------------
+    //         // SEND TO XERO
+    //         // ----------------------------------------------
+    //         $response = Http::withHeaders([
+    //             'Authorization' => 'Bearer ' . $xeroConnection->access_token,
+    //             'xero-tenant-id' => $xeroConnection->tenant_id,
+    //             'Accept' => 'application/json'
+    //         ])->post(
+    //             "https://api.xero.com/payroll.xro/1.0/Timesheets",
+    //             $payload
+    //         );
+
+    //         dd($response->body());
+
+    //         $data = $response->json();
+
+    //         if ($response->failed()) {
+    //             Log::error('Xero Timesheet Error', ['response' => $data, 'payload' => $payload]);
+    //             throw new \Exception("Xero Timesheet API failed: " . json_encode($data));
+    //         }
+
+    //         // ----------------------------------------------
+    //         // SAVE TIMESHEET IN LOCAL DB
+    //         // ----------------------------------------------
+    //         $timesheetId = $data['Timesheets'][0]['TimesheetID'] ?? null;
+
+    //         XeroTimesheet::updateOrCreate(
+    //             [
+    //                 'employee_id' => $employee->id,
+    //                 'start_period' => $startPeriod->toDateString(),
+    //             ],
+    //             [
+    //                 'end_period'   => $endPeriod->toDateString(),
+    //                 'xero_timesheet_id' => $timesheetId,
+    //                 'xero_data'    => json_encode($data),
+    //                 'hours_json'   => json_encode($units),
+    //                 'payfrequency' => $payFreq
+    //             ]
+    //         );
+
+    //         return $data;
+    //     } catch (\Exception $e) {
+    //         Log::error("Timesheet Sync Failed", ['error' => $e->getMessage()]);
+    //         return false;
+    //     }
+    // }
+
+    public function syncTimesheetToXero($attendance)
+    {
+        try {
+            $employee = Employee::find($attendance->employee_id);
+
+            // --------------------
+            // 1. Xero Connection
+            $xeroConnection = XeroConnection::where('organization_id', $employee->organization_id)
+                ->where('is_active', 1)
+                ->first();
+
+            if (!$xeroConnection) {
+                throw new \Exception("No active Xero connection");
+            }
+
+            $employeeXeroConnection = EmployeeXeroConnection::where('employee_id', $employee->id)
+                ->where('xero_connection_id', $xeroConnection->id)
+                ->first();
+
+            if (!$employeeXeroConnection || !$employeeXeroConnection->xero_employee_id) {
+                throw new \Exception("Xero employee mapping not found");
+            }
+
+            // ------------------------------
+            // 2. Fetch Employee's Calendar
+            // ------------------------------
+            $calendar = $this->getPayrollCallender($employeeXeroConnection);
+            $calendar = $calendar['calendar'][0];  // extract first
+
+            $calendarType = strtolower($calendar["CalendarType"]);
+            $refDate      = $this->convertXeroDate($calendar["ReferenceDate"]);
+
+            // ------------------------------
+            // 3. Determine Pay Period
+            // ------------------------------
+            if ($calendarType === "weekly") {
+
+                $startPeriod = $refDate->copy();
+                while ($startPeriod->gt(Carbon::parse($attendance->date))) {
+                    $startPeriod->subWeek();
+                }
+                while ($startPeriod->lte(Carbon::parse($attendance->date)->subWeek())) {
+                    $startPeriod->addWeek();
+                }
+
+                $endPeriod = $startPeriod->copy()->addDays(6);
+                $totalDays = 7;
+            } elseif ($calendarType === "fortnightly") {
+
+                $startPeriod = $refDate->copy();
+                while ($startPeriod->gt(Carbon::parse($attendance->date))) {
+                    $startPeriod->subDays(14);
+                }
+                while ($startPeriod->lte(Carbon::parse($attendance->date)->subDays(14))) {
+                    $startPeriod->addDays(14);
+                }
+
+                $endPeriod = $startPeriod->copy()->addDays(13);
+                $totalDays = 14;
+            } elseif ($calendarType === "monthly") {
+
+                // Monthly is based on ReferenceDate day
+                $refDay = $refDate->day;
+                $date   = Carbon::parse($attendance->date);
+
+                // Determine start period
+                if ($date->day >= $refDay) {
+                    $startPeriod = Carbon::create($date->year, $date->month, $refDay);
+                } else {
+                    $startPeriod = Carbon::create($date->subMonth()->year, $date->subMonth()->month, $refDay);
+                }
+
+                // End period = next month day - 1
+                $endPeriod = $startPeriod->copy()->addMonth()->subDay();
+
+                $totalDays = $endPeriod->diffInDays($startPeriod) + 1;
+            } else {
+                throw new \Exception("Unsupported calendar type: $calendarType");
+            }
+
+            // ----------------------------------------------
+            // 4. INIT EMPTY TIMESHEET ARRAY
+            // ----------------------------------------------
+            $units = array_fill(0, $totalDays, 0);
+
+            // ----------------------------------------------
+            // 5. Map Attendance Day → Timesheet Index
+            // ----------------------------------------------
+            $attendanceDate = Carbon::parse($attendance->date);
+
+            $dayIndex = $startPeriod->diffInDays($attendanceDate);
+
+            if ($dayIndex >= 0 && $dayIndex < $totalDays) {
+                $units[$dayIndex] = $attendance->total_work_hours;
+            }
+
+            // ----------------------------------------------
+            // 6. Get Earnings Rate
+            // ----------------------------------------------
+            $xeroData = json_decode($employeeXeroConnection->xero_data, true);
+            $earningRateId = $xeroData["OrdinaryEarningsRateID"]
+                ?? ($xeroData["PayTemplate"]["EarningsLines"][0]["EarningsRateID"] ?? null);
+
+            if (!$earningRateId) {
+                throw new \Exception("EarningsRateID missing.");
+            }
+
+            // ----------------------------------------------
+            // 7. Build Timesheet Payload
+            // ----------------------------------------------
+            $payload = [
+                [
+                    "EmployeeID" => $employeeXeroConnection->xero_employee_id,
+                    "StartDate"  => "/Date(" . ($startPeriod->timestamp * 1000) . "+0000)/",
+                    "EndDate"    => "/Date(" . ($endPeriod->timestamp * 1000) . "+0000)/",
+                    "Status"     => "DRAFT",
+                    "TimesheetLines" => [
+                        [
+                            "EarningsRateID" => $earningRateId,
+                            "NumberOfUnits"  => $units
+                        ]
+                    ]
+                ]
+            ];
+            dd( $payload);
+
+            // ----------------------------------------------
+            // 8. API CALL TO XERO
+            // ----------------------------------------------
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $xeroConnection->access_token,
+                'xero-tenant-id' => $xeroConnection->tenant_id,
+                'Accept' => 'application/json'
+            ])->post("https://api.xero.com/payroll.xro/1.0/Timesheets", $payload);
+            dd($response->body());
+
+            $data = $response->json();
+
+            if ($response->failed()) {
+                Log::error("Xero error", ['response' => $data, 'payload' => $payload]);
+                throw new \Exception("Xero API failed");
+            }
+
+            // ----------------------------------------------
+            // 9. Save Locally
+            // ----------------------------------------------
+            $timesheetId = $data['Timesheets'][0]['TimesheetID'] ?? null;
+
+            XeroTimesheet::updateOrCreate(
+                [
+                    'employee_id' => $employee->id,
+                    'start_period' => $startPeriod->toDateString(),
+                ],
+                [
+                    'end_period'   => $endPeriod->toDateString(),
+                    'xero_timesheet_id' => $timesheetId,
+                    'xero_data'    => json_encode($data),
+                    'hours_json'   => json_encode($units),
+                    'calendar_type' => $calendarType
+                ]
+            );
+
+            return $data;
+        } catch (\Exception $e) {
+            Log::error("Timesheet Sync Failed", ['error' => $e->getMessage()]);
+            return false;
+        }
+    }
+
+
+    public function convertXeroDate($dateString)
+    {
+        preg_match('/\d+/', $dateString, $match);
+        return Carbon::createFromTimestamp($match[0] / 1000);
+    }
+
+
+    public function getPayrollCallender($employeeXeroConnection)
+    {
+        try {
+
+            // -----------------------------------------
+            // 1. Parse the stored Xero employee JSON
+            // -----------------------------------------
+            $xeroData = json_decode($employeeXeroConnection->xero_data, true);
+
+
+            if (!$xeroData || empty($xeroData['Employees'][0]['PayrollCalendarID'])) {
+                throw new \Exception("PayrollCalendarID missing in employee Xero data.");
+            }
+
+            $calendarId = $xeroData['Employees'][0]['PayrollCalendarID'];
+
+            // -----------------------------------------
+            // 2. Get Xero connection (tenant + token)
+            // -----------------------------------------
+            $xeroConnection = XeroConnection::find($employeeXeroConnection->xero_connection_id);
+
+            if (!$xeroConnection) {
+                throw new \Exception("Xero connection not found.");
+            }
+
+            $accessToken = $xeroConnection->access_token;
+            $tenantId = $xeroConnection->tenant_id;
+
+            // -----------------------------------------
+            // 3. Call Xero API to fetch this calendar
+            // -----------------------------------------
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $accessToken,
+                'xero-tenant-id' => $tenantId,
+                'Accept' => 'application/json'
+            ])->get("https://api.xero.com/payroll.xro/1.0/PayrollCalendars/{$calendarId}");
+
+            if ($response->failed()) {
+                throw new \Exception("Failed to fetch payroll calendar: " . $response->body());
+            }
+           
+
+            $data = $response->json();
+
+            return [
+                'status' => true,
+                'calendar' => $data['PayrollCalendars'] ?? null
+            ];
+        } catch (\Exception $e) {
+            return [
+                'status' => false,
+                'message' => $e->getMessage()
+            ];
+        }
+    }
+
 
     /**
      * Display the specified attendance record.
@@ -472,7 +936,8 @@ class AttendanceController extends Controller
     //     }
     // }
 
-    public function getAttendancechangeRequests(){
+    public function getAttendancechangeRequests()
+    {
 
         $employee = Employee::where('user_id', Auth::id())->first();
         $organizationId = $employee->organization_id;
@@ -481,7 +946,7 @@ class AttendanceController extends Controller
         $employees = Employee::where('organization_id', $organizationId)->get();
 
         $attendanceChangeRequests = manually_adjusted_attendance::whereIn('employee_id', $employees->pluck('id'))
-            ->with( 'employee.department:id,name','employee:id,first_name,last_name,department_id','creator:id,first_name,last_name','approver:id,first_name,last_name')
+            ->with('employee.department:id,name', 'employee:id,first_name,last_name,department_id', 'creator:id,first_name,last_name', 'approver:id,first_name,last_name')
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -490,7 +955,6 @@ class AttendanceController extends Controller
             'data' => $attendanceChangeRequests,
             'message' => 'Attendance change requests retrieved successfully.'
         ]);
-
     }
 
     public function update(Request $request, Attendance $attendance): JsonResponse
@@ -675,8 +1139,13 @@ class AttendanceController extends Controller
             // ✅ Get working day / shift info
             $attendanceRule = OrganizationAttendanceRule::where([
                 'organization_id' => $employee->organization_id,
-                'shift_name' => 'Morning Shift'
             ])->first();
+
+            $roster = Roster::where('employee_id', $employee->id)
+                ->pluck('shift_id');
+
+            $shiftDetails = Shift::whereIn('id', $roster)->first();
+            // dd($shiftDetails);
 
             $todayDayName = Carbon::today()->format('l'); // e.g. "Saturday"
 

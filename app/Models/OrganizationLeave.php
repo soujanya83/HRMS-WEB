@@ -21,7 +21,9 @@ class OrganizationLeave extends Model
         'description',
         'created_by',
         'updated_by',
-        'organization_id'
+        'organization_id',
+        'employee_id',
+        'xero_leave_type_id'
     ]; 
 
      protected $casts = [

@@ -23,6 +23,14 @@ use App\Http\Controllers\API\V1\Employee\ProbationPeriodController;
 use App\Http\Controllers\API\V1\Employee\OffboardingTaskController;
 use App\Http\Controllers\API\V1\Employee\OffboardingTemplateController;
 use App\Http\Controllers\API\V1\Employee\OffboardingTemplateTaskController;
+use App\Http\Controllers\API\V1\Rostering\ShiftController;
+use App\Http\Controllers\API\V1\Rostering\RosterController;
+use App\Http\Controllers\API\V1\Rostering\ShiftSwapRequestController;
+use App\Http\Controllers\API\V1\Performance\PerformanceReviewCycleController;
+use App\Http\Controllers\API\V1\Performance\PerformanceGoalController;
+use App\Http\Controllers\API\V1\Performance\GoalKeyResultController;
+use App\Http\Controllers\API\V1\Performance\PerformanceReviewController;
+use App\Http\Controllers\API\V1\Performance\PerformanceFeedbackController;
 use Illuminate\Http\Request;
 use App\Http\Controllers\API\V1\OrganizationLeaveController;
 use App\Http\Controllers\API\V1\Attendance\OrganizationAttendanceRuleController;
@@ -40,6 +48,10 @@ use App\Models\Payrolls;
 use App\Http\Controllers\API\V1\PayrollsController;
 use App\Http\Controllers\API\V1\SalaryRevisionsController as SalaryRevisions;
 use App\Http\Controllers\API\V1\BonusesController as BonusController;
+use App\Http\Controllers\API\V1\EmploymentTypeController;
+use App\Http\Controllers\API\V1\Xero\PayrunController;
+use App\Http\Controllers\API\V1\Xero\XeroConnectionController;
+use App\Http\Controllers\API\V1\Xero\XeroEmployeeController;
 
 Route::prefix('v1')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
@@ -47,14 +59,21 @@ Route::prefix('v1')->group(function () {
 
     Route::middleware('auth:sanctum')->group(function () {
 
+
+
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::get('/profile', function (Request $request) {
             return response()->json($request->user());
         });
 
         // Organization Routes
+        // Route::middleware('org.role:superadmin')->group(function () {
         Route::apiResource('organizations', OrganizationController::class);
+        // protected routes here
+        // });
 
+        // employeement type
+        Route::apiResource('employment-types', EmploymentTypeController::class);
         // Nested Department Routes
         Route::apiResource('organizations.departments', DepartmentController::class)->shallow();
 
@@ -69,6 +88,13 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('organization-project', ProjectController::class);
         Route::apiResource('organization/employee/tasks', TaskController::class);
         Route::apiResource('organization/employee/timesheet', TimesheetController::class);
+        Route::get('employee/timesheet/getpayperiod/{employeeId}', [TimesheetController::class, 'getpayperiod']);
+        Route::post('employee/timesheet', [TimesheetController::class, 'CreateTimeSheetManually']);
+        Route::post('employee/timesheet/review',[TimesheetController::class,'reviewTimesheet']);
+      Route::post('employee/timesheet/payrun',[TimesheetController::class,'createPayRun']);
+        
+
+        Route::get('employee/payrun/{organizationId}', [PayrunController::class, 'getPayrun']);
 
         Route::patch('organization-holiday/{id}/partial', [HolidayController::class, 'partialUpdate']);
         Route::apiResource('employee-overtime', OvertimeRequestController::class);
@@ -269,6 +295,8 @@ Route::prefix('v1')->group(function () {
             Route::delete('/destroy/{id}', [LeaveController::class, 'destroy']);
             Route::get('/leaveBalance', [LeaveController::class, 'leaveBalance']);
             Route::get('/leaves-summary', [LeaveController::class, 'getLeavesSummary']);
+            Route::get('/xero-leave-types/{organization_id}', [LeaveController::class, 'getXeroLeaveTypes']);
+            Route::post('/assign-employee-leave-types', [LeaveController::class, 'assignEmployeeleaveType']);
         });
 
         // Employee Documents
@@ -346,5 +374,106 @@ Route::prefix('v1')->group(function () {
             Route::delete('/{id}', [OffboardingTemplateTaskController::class, 'destroy']);
             Route::get('/template/{templateId}', [OffboardingTemplateTaskController::class, 'byTemplate']);
         });
+        Route::prefix('shifts')->group(function () {
+            Route::get('/', [ShiftController::class, 'index']);
+            Route::post('/', [ShiftController::class, 'store']);
+            Route::get('/{id}', [ShiftController::class, 'show']);
+            Route::put('/{id}', [ShiftController::class, 'update']);
+            Route::patch('/{id}', [ShiftController::class, 'update']);
+            Route::delete('/{id}', [ShiftController::class, 'destroy']);
+            Route::get('/trashed', [ShiftController::class, 'trashed']);
+            Route::patch('/{id}/restore', [ShiftController::class, 'restore']);
+            Route::get('/calendar', [ShiftController::class, 'calendar']);
+        });
+
+        Route::prefix('rosters')->group(function () {
+            Route::get('/', [RosterController::class, 'index']);
+            Route::post('/', [RosterController::class, 'store']);
+            Route::get('/{id}', [RosterController::class, 'show']);
+            Route::put('/{id}', [RosterController::class, 'update']);
+            Route::patch('/{id}', [RosterController::class, 'update']);
+            Route::delete('/{id}', [RosterController::class, 'destroy']);
+            Route::post('/bulk', [RosterController::class, 'bulkStore']);
+            Route::get('/employee/{employeeId}', [RosterController::class, 'byEmployee']);
+        });
+
+        Route::prefix('shift-swap-requests')->group(function () {
+            Route::get('/', [ShiftSwapRequestController::class, 'index']);
+            Route::post('/', [ShiftSwapRequestController::class, 'store']);
+            Route::get('/{id}', [ShiftSwapRequestController::class, 'show']);
+            Route::put('/{id}', [ShiftSwapRequestController::class, 'update']);
+            Route::patch('/{id}', [ShiftSwapRequestController::class, 'update']);
+            Route::delete('/{id}', [ShiftSwapRequestController::class, 'destroy']);
+            Route::patch('/{id}/approve', [ShiftSwapRequestController::class, 'approve']);
+            Route::patch('/{id}/reject', [ShiftSwapRequestController::class, 'reject']);
+            Route::get('/employee/{employeeId}', [ShiftSwapRequestController::class, 'byEmployee']);
+        });
+
+
+        Route::prefix('performance-review-cycles')->group(function () {
+            Route::get('/', [PerformanceReviewCycleController::class, 'index']);
+            Route::post('/', [PerformanceReviewCycleController::class, 'store']);
+            Route::get('/{id}', [PerformanceReviewCycleController::class, 'show']);
+            Route::put('/{id}', [PerformanceReviewCycleController::class, 'update']);
+            Route::patch('/{id}', [PerformanceReviewCycleController::class, 'update']);
+            Route::delete('/{id}', [PerformanceReviewCycleController::class, 'destroy']);
+            Route::get('/status/{status}', [PerformanceReviewCycleController::class, 'status']);
+        });
+
+        Route::prefix('performance-goals')->group(function () {
+            Route::get('/', [PerformanceGoalController::class, 'index']);
+            Route::post('/', [PerformanceGoalController::class, 'store']);
+            Route::get('/{id}', [PerformanceGoalController::class, 'show']);
+            Route::put('/{id}', [PerformanceGoalController::class, 'update']);
+            Route::patch('/{id}', [PerformanceGoalController::class, 'update']);
+            Route::delete('/{id}', [PerformanceGoalController::class, 'destroy']);
+            Route::get('/cycle/{cycleId}', [PerformanceGoalController::class, 'byCycle']);
+            Route::get('/status/{status}', [PerformanceGoalController::class, 'byStatus']);
+            Route::post('/bulk', [PerformanceGoalController::class, 'bulkAssign']);
+        });
+
+        Route::prefix('goal-key-results')->group(function () {
+            Route::get('/', [GoalKeyResultController::class, 'index']);
+            Route::post('/', [GoalKeyResultController::class, 'store']);
+            Route::get('/{id}', [GoalKeyResultController::class, 'show']);
+            Route::put('/{id}', [GoalKeyResultController::class, 'update']);
+            Route::patch('/{id}', [GoalKeyResultController::class, 'update']);
+            Route::delete('/{id}', [GoalKeyResultController::class, 'destroy']);
+            Route::patch('/bulk', [GoalKeyResultController::class, 'bulkUpdate']);
+        });
+
+        Route::prefix('performance-reviews')->group(function () {
+            Route::get('/', [PerformanceReviewController::class, 'index']);
+            Route::post('/', [PerformanceReviewController::class, 'store']);
+            Route::get('/{id}', [PerformanceReviewController::class, 'show']);
+            Route::put('/{id}', [PerformanceReviewController::class, 'update']);
+            Route::patch('/{id}', [PerformanceReviewController::class, 'update']);
+            Route::delete('/{id}', [PerformanceReviewController::class, 'destroy']);
+            Route::patch('/{id}/acknowledge', [PerformanceReviewController::class, 'acknowledge']);
+            Route::get('/employee/{employeeId}', [PerformanceReviewController::class, 'byEmployee']);
+            Route::get('/cycle/{cycleId}', [PerformanceReviewController::class, 'byCycle']);
+        });
+
+        Route::prefix('performance-feedback')->group(function () {
+            Route::get('/', [PerformanceFeedbackController::class, 'index']);
+            Route::post('/', [PerformanceFeedbackController::class, 'store']);
+            Route::get('/{id}', [PerformanceFeedbackController::class, 'show']);
+            Route::put('/{id}', [PerformanceFeedbackController::class, 'update']);
+            Route::patch('/{id}', [PerformanceFeedbackController::class, 'update']);
+            Route::delete('/{id}', [PerformanceFeedbackController::class, 'destroy']);
+            Route::patch('/{id}/read', [PerformanceFeedbackController::class, 'markRead']);
+            Route::get('/receiver/{employeeId}', [PerformanceFeedbackController::class, 'forReceiver']);
+        });
+
+        // Xero Connection Routes
+        Route::prefix('xero-connections')->group(function () {
+            Route::get('/', [XeroConnectionController::class, 'index']);
+            Route::post('/', [XeroConnectionController::class, 'store']);
+            Route::get('/{id}', [XeroConnectionController::class, 'show']);
+            Route::match(['put', 'post'], '/{id}', [XeroConnectionController::class, 'update']);
+            Route::delete('/{id}', [XeroConnectionController::class, 'destroy']);
+        });
+
+        Route::post('/xero/sync-employee', [XeroEmployeeController::class, 'sync']);
     });
 });

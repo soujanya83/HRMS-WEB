@@ -27,7 +27,12 @@ class EmployeeController extends Controller
     {
         try {
             $employees = Employee::with([
-                'user', 'organization', 'department', 'designation', 'applicant', 'manager'
+                'user',
+                'organization',
+                'department',
+                'designation',
+                'applicant',
+                'manager'
             ])->orderBy('joining_date', 'desc')->get();
 
             return response()->json([
@@ -44,8 +49,16 @@ class EmployeeController extends Controller
     {
         try {
             $employee = Employee::with([
-                'user', 'organization', 'department', 'designation', 'applicant', 'manager',
-                'documents', 'employmentHistory', 'probationPeriod', 'exitDetails'
+                'user',
+                'organization',
+                'department',
+                'designation',
+                'applicant',
+                'manager',
+                'documents',
+                'employmentHistory',
+                'probationPeriod',
+                'exitDetails'
             ])->findOrFail($id);
 
             return response()->json([
@@ -77,7 +90,7 @@ class EmployeeController extends Controller
                 'phone_number' => 'required|string|max:20',
                 'address' => 'required|string|max:1000',
                 'joining_date' => 'required|date',
-                'employment_type' => 'required|in:Full-time,Part-time,Contract,Internship',
+                'employment_type' => 'required',
                 'status' => 'sometimes|in:Active,On Probation,On Leave,Terminated',
                 'tax_file_number' => 'nullable|string|max:100',
                 'superannuation_fund_name' => 'nullable|string|max:255',
@@ -127,7 +140,7 @@ class EmployeeController extends Controller
                 'phone_number' => 'sometimes|string|max:20',
                 'address' => 'sometimes|string|max:1000',
                 'joining_date' => 'sometimes|date',
-                'employment_type' => 'sometimes|in:Full-time,Part-time,Contract,Internship',
+                'employment_type' => 'sometimes',
                 'status' => 'sometimes|in:Active,On Probation,On Leave,Terminated',
                 'tax_file_number' => 'nullable|string|max:100',
                 'superannuation_fund_name' => 'nullable|string|max:255',
@@ -244,8 +257,16 @@ class EmployeeController extends Controller
     public function profile($id): JsonResponse
     {
         $employee = Employee::with([
-            'user', 'organization', 'department', 'designation', 'documents', 'employmentHistory',
-            'probationPeriod', 'exitDetails', 'manager', 'applicant'
+            'user',
+            'organization',
+            'department',
+            'designation',
+            'documents',
+            'employmentHistory',
+            'probationPeriod',
+            'exitDetails',
+            'manager',
+            'applicant'
         ])->findOrFail($id);
         return response()->json(['success' => true, 'data' => $employee], 200);
     }
@@ -352,19 +373,34 @@ class EmployeeController extends Controller
     private function validationError($e)
     {
         return response()->json([
-            'success' => false, 'message' => 'Validation error', 'errors' => $e->errors()
+            'success' => false,
+            'message' => 'Validation error',
+            'errors' => $e->errors()
         ], 422);
     }
     private function serverError($msg, $e)
     {
         return response()->json([
-            'success' => false, 'message' => $msg, 'error' => $e->getMessage()
+            'success' => false,
+            'message' => $msg,
+            'error' => $e->getMessage()
         ], 500);
     }
     private function notFound($msg, $e)
     {
         return response()->json([
-            'success' => false, 'message' => $msg, 'error' => $e->getMessage()
+            'success' => false,
+            'message' => $msg,
+            'error' => $e->getMessage()
         ], 404);
+    }
+
+    public function SyncWithXero(Request $request): JsonResponse
+    {
+        // Placeholder for Xero synchronization logic
+        return response()->json([
+            'success' => true,
+            'message' => 'Xero synchronization not yet implemented'
+        ], 200);
     }
 }

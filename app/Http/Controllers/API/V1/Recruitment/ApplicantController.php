@@ -54,7 +54,7 @@ class ApplicantController extends Controller
                 'resume' => 'nullable|file|mimes:pdf,doc,docx|max:5120', // 5MB max
                 'cover_letter' => 'nullable|string',
                 'source' => 'required|in:website,linkedin,referral,job-board,social-media,direct-application,recruiter,other',
-                'status' => 'required|in:Applied,Screening,Interviewing,Offered,Hired,Rejected,Withdrawn',
+                'status' => 'required|in:Applied,shortlisted,interview-scheduled,Screening,Interviewing,Offered,Hired,Rejected,Withdrawn',
                 'applied_date' => 'required|date|before_or_equal:today',
             ]);
 
@@ -146,7 +146,7 @@ class ApplicantController extends Controller
                 'resume' => 'nullable|file|mimes:pdf,doc,docx|max:5120',
                 'cover_letter' => 'sometimes|string',
                 'source' => 'sometimes|in:website,linkedin,referral,job-board,social-media,direct-application,recruiter,other',
-                'status' => 'required|in:Applied,Screening,Interviewing,Offered,Hired,Rejected,Withdrawn',
+                'status' => 'required|in:Applied,interview-scheduled,shortlisted,Screening,Interviewing,Offered,Hired,Rejected,Withdrawn',
                 'applied_date' => 'sometimes|date|before_or_equal:today',
             ]);
 
@@ -268,7 +268,7 @@ class ApplicantController extends Controller
     public function getByStatus($status): JsonResponse
     {
         try {
-            $validStatuses = ['Applied','Screening','Interviewing','Offered','Hired','Rejected','Withdrawn'];
+            $validStatuses = ['Applied','Screening','shortlisted','interview-scheduled','Interviewing','Offered','Hired','Rejected','Withdrawn'];
             
             if (!in_array($status, $validStatuses)) {
                 return response()->json([
@@ -307,7 +307,7 @@ class ApplicantController extends Controller
             $applicant = Applicant::findOrFail($id);
 
             $validated = $request->validate([
-                'status' => 'required|in:Applied,Screening,Interviewing,Offered,Hired,Rejected,Withdrawn',
+                'status' => 'required|in:Applied,Screening,interview-scheduled,shortlisted,Interviewing,Offered,Hired,Rejected,Withdrawn',
                 'notes' => 'nullable|string|max:1000'
             ]);
 

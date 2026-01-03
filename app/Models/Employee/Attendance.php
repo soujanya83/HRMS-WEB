@@ -72,4 +72,6 @@ class Attendance extends Model
     {
         return $this->belongsTo(OrganizationAttendanceRule::class, 'organization_id', 'organization_id');
     }
+
+
 }

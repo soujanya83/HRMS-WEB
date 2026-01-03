@@ -10,90 +10,96 @@ use App\Models\OrganizationAttendanceRule;
 use Carbon\Carbon;
 use Illuminate\Support\Str;
 use App\Models\HolidayModel;
+use App\Models\Rostering\Roster;
 use Illuminate\Support\Facades\Log;
 
-
+use function Laravel\Prompts\info;
 
 class Kernel extends ConsoleKernel
 {
     /**
      * Define the application's command schedule.
      */
-protected function schedule(Schedule $schedule): void
+    protected function schedule(Schedule $schedule): void
 {
-    // 🗓️ Get all attendance rules
-    $rules = OrganizationAttendanceRule::select(
-        'organization_id',
-        'check_in',
-        'absent_after_minutes',
-        'half_day_after_minutes',
-        'weekly_off_days'
-    )->get();
+    Log::info("Scheduler loaded at " . now());
 
-    $todayDate = Carbon::now()->toDateString();      // e.g. 2025-10-23
-    $todayDay  = strtolower(Carbon::now()->format('D')); // e.g. thu
+    // Load attendance rules per organization
+    $rules = OrganizationAttendanceRule::get();
 
     foreach ($rules as $rule) {
 
-        // 🔹 Step 1: Get check-in base time
-        $checkInTime = Carbon::createFromFormat('H:i', $rule->check_in);
+        $today = today()->toDateString();
+        $todayDay = strtolower(now()->format('D'));
 
-        // 🔹 Step 2: Compute half-day & absent cutoff
-        $halfDayTime = $rule->half_day_after_minutes
-            ? $checkInTime->copy()->addMinutes($rule->half_day_after_minutes)->format('H:i')
-            : null;
+        // Load all shifts for this organization
+        $shifts = Roster::where('organization_id', $rule->organization_id)->get();
 
-        $absentTime = $checkInTime->copy()->addMinutes($rule->absent_after_minutes)->format('H:i');
+        foreach ($shifts as $shift) {
 
-        // 🔹 Step 3: Weekly off logic
-        $weeklyOffs = $rule->weekly_off_days
-            ? array_map('trim', explode(',', strtolower($rule->weekly_off_days)))
-            : [];
+            // Validate check-in
+            try {
+                $shiftCheckIn = Carbon::createFromFormat('H:i', $shift->check_in);
+            } catch (\Exception $e) {
+                Log::warning("Invalid shift check_in time for Shift {$shift->id}");
+                continue;
+            }
 
-        // 🔹 Step 4: Check if today is a holiday for this org
-        $holiday = HolidayModel::where('organization_id', $rule->organization_id)
-            ->whereDate('holiday_date', $todayDate)
-            ->where('is_active', true)
-            ->first();
+            // Compute cutoff times
+            $halfDayTime = $shiftCheckIn->copy()
+                ->addMinutes($rule->half_day_after_minutes)
+                ->format('H:i');
 
-        if ($holiday) {
-            // 🌟 Today is a declared holiday
-            $schedule->command('attendance:mark-holiday', [$rule->organization_id])
-                ->dailyAt('23:52')
-                ->appendOutputTo(storage_path("logs/attendance_holiday_org_{$rule->organization_id}.log"));
+            $absentTime = $shiftCheckIn->copy()
+                ->addMinutes($rule->absent_after_minutes)
+                ->format('H:i');
 
-            Log::info("⛱ Holiday detected ({$holiday->holiday_type}) for Org #{$rule->organization_id} on {$todayDate}");
-            continue; // Skip other schedules
-        }
+            // WEEKLY OFF check
+            $weeklyOffs = $rule->weekly_off_days
+                ? array_map('trim', explode(',', strtolower($rule->weekly_off_days)))
+                : [];
 
-        // 🔹 Step 5: If weekly off, mark holiday too
-        if (in_array($todayDay, $weeklyOffs)) {
-            $schedule->command('attendance:mark-holiday', [$rule->organization_id])
-                ->dailyAt($checkInTime->format('H:i'))
-                ->appendOutputTo(storage_path("logs/attendance_weeklyoff_org_{$rule->organization_id}.log"));
+            if (in_array($todayDay, $weeklyOffs)) {
+                Log::info("Weekly off for Org {$rule->organization_id} - Shift {$shift->id}");
+                continue;
+            }
 
-            Log::info("🕊 Weekly Off ({$todayDay}) marked as holiday for Org #{$rule->organization_id}");
-            continue; // Skip other schedules
-        }
+            // HOLIDAY check
+            $holiday = HolidayModel::where('organization_id', $rule->organization_id)
+                ->whereDate('holiday_date', $today)
+                ->where('is_active', true)
+                ->first();
 
-        // 🔹 Step 6: Otherwise, schedule regular tasks
-        if ($halfDayTime) {
-            $schedule->command('attendance:mark-employees-half-day', [$rule->organization_id])
+            if ($holiday) {
+                Log::info("Holiday detected for Org {$rule->organization_id}");
+                continue;
+            }
+
+            // SCHEDULE HALF-DAY
+            $schedule->command('attendance:mark-halfday', [
+                    $rule->organization_id,
+                    $shift->id
+                ])
                 ->dailyAt($halfDayTime)
-                ->appendOutputTo(storage_path("logs/attendance_halfday_org_{$rule->organization_id}.log"));
-        }
+                ->appendOutputTo(storage_path("logs/halfday_org_{$rule->organization_id}_shift_{$shift->id}.log"));
 
-        $schedule->command('attendance:mark-absent', [$rule->organization_id])
-            ->dailyAt($absentTime)
-            ->appendOutputTo(storage_path("logs/attendance_absent_org_{$rule->organization_id}.log"));
-   
-   $schedule->command('payroll:generate-organization')
-        ->monthlyOn(5, '03:00')
-        ->appendOutputTo(storage_path('logs/payroll_auto.log'));
-   
-   
+            // SCHEDULE ABSENT
+            $schedule->command('attendance:mark-absent', [
+                    $rule->organization_id,
+                    $shift->id
+                ])
+                ->dailyAt($absentTime)
+                ->appendOutputTo(storage_path("logs/absent_org_{$rule->organization_id}_shift_{$shift->id}.log"));
+
+            Log::info(
+                "Scheduled shift {$shift->id} 
+                | Half Day: {$halfDayTime} 
+                | Absent: {$absentTime}"
+            );
         }
+    }
 }
+
 
     /**
      * Register the commands for the application.
