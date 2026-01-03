@@ -36,6 +36,10 @@ class Organization extends Model
         return $this->hasMany(Department::class);
     }
 
+    public function attendanceRule(): HasMany
+    {
+        return $this->hasMany(OrganizationAttendanceRule::class);
+    }
      /**
      * Users associated with this organization via pivot user_organization_roles.
      * Pivot contains role_id so you can filter by role if needed.

@@ -97,15 +97,5 @@ class User extends Authenticatable
             ->select('roles.*')
             ->get();
     }
-    public function attendances()
-    {
-        return $this->hasMany(Attendance::class,'employee_id');
-    }
-
-//     public function employee()
-// {
-//     return $this->hasOne(\App\Models\Employee\Employee::class, 'user_id');
-// }
-
 
 }

@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\SalaryStructure;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Http\JsonResponse;   
+use Illuminate\Support\Facades\Auth;
 
 class SalaryStructureController extends Controller
 {
@@ -27,7 +28,6 @@ class SalaryStructureController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'organization_id' => 'required|exists:organizations,id',
                 'employee_id' => 'nullable|exists:employees,id',
                 'grade_level' => 'nullable|string|max:50',
                 'base_salary' => 'required|numeric|min:0',
@@ -42,7 +42,12 @@ class SalaryStructureController extends Controller
                 ], 422);
             }
 
-            $structure = SalaryStructure::create($validator->validated());
+            $employee = Auth::user()->employee;
+            $organization_id = $employee->organization_id;
+            $data = $validator->validated();
+            $data['organization_id'] = $organization_id;
+
+            $structure = SalaryStructure::create(  $data);
 
             return response()->json([
                 'status' => true,

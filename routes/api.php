@@ -44,6 +44,15 @@ use App\Http\Controllers\API\V1\Employee\TimesheetController;
 use App\Http\Controllers\API\V1\SalaryComponentTypesController;
 use App\Http\Controllers\API\V1\SalaryStructureController;
 use App\Http\Controllers\API\V1\SalaryComponentController;
+use App\Http\Controllers\API\V1\TaxSlabsController;
+use App\Models\Payrolls;
+use App\Http\Controllers\API\V1\PayrollsController;
+use App\Http\Controllers\API\V1\SalaryRevisionsController as SalaryRevisions;
+use App\Http\Controllers\API\V1\BonusesController as BonusController;
+use App\Http\Controllers\API\V1\EmploymentTypeController;
+use App\Http\Controllers\API\V1\Xero\PayrunController;
+use App\Http\Controllers\API\V1\Xero\XeroConnectionController;
+use App\Http\Controllers\API\V1\Xero\XeroEmployeeController;
 
 use App\Http\Controllers\API\V1\{
     RoleController,
@@ -95,11 +104,12 @@ Route::prefix('v1')->group(function () {
 
         // Organization Routes
         // Route::middleware('org.role:superadmin')->group(function () {
-            Route::apiResource('organizations', OrganizationController::class);
-    // protected routes here
+        Route::apiResource('organizations', OrganizationController::class);
+        // protected routes here
         // });
-        
 
+        // employeement type
+        Route::apiResource('employment-types', EmploymentTypeController::class);
         // Nested Department Routes
         Route::apiResource('organizations.departments', DepartmentController::class)->shallow();
 
@@ -114,12 +124,37 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('organization-project', ProjectController::class);
         Route::apiResource('organization/employee/tasks', TaskController::class);
         Route::apiResource('organization/employee/timesheet', TimesheetController::class);
+        Route::get('employee/timesheet/getpayperiod/{employeeId}', [TimesheetController::class, 'getpayperiod']);
+        Route::post('employee/timesheet', [TimesheetController::class, 'CreateTimeSheetManually']);
+        Route::post('employee/timesheet/review',[TimesheetController::class,'reviewTimesheet']);
+      Route::post('employee/timesheet/payrun',[TimesheetController::class,'createPayRun']);
+        
+
+        Route::get('employee/payrun/{organizationId}', [PayrunController::class, 'getPayrun']);
 
         Route::patch('organization-holiday/{id}/partial', [HolidayController::class, 'partialUpdate']);
         Route::apiResource('employee-overtime', OvertimeRequestController::class);
         Route::apiResource('organization/salarycomponents/types', SalaryComponentTypesController::class);
-        Route::apiResource('organization/salarycomponents', SalaryComponentController::class);
+        Route::apiResource('organization/salary/components', SalaryComponentController::class);
         Route::apiResource('organization/employee/salary', SalaryStructureController::class);
+        Route::apiResource('organization/tax-slabs', TaxSlabsController::class);
+        Route::apiResource('payrolls', PayrollsController::class);
+        Route::apiResource('salary-revisions', SalaryRevisions::class);
+
+        Route::prefix('bonuses')->group(function () {
+
+            Route::get('/', [BonusController::class, 'index']);
+            Route::post('/', [BonusController::class, 'store']);
+            Route::get('/{id}', [BonusController::class, 'show']);
+            Route::put('/{id}', [BonusController::class, 'update']);
+            Route::delete('/{id}', [BonusController::class, 'destroy']);
+
+            // Approval actions
+            Route::post('/{id}/approve', [BonusController::class, 'approve']);
+            Route::post('/{id}/reject', [BonusController::class, 'reject']);
+        });
+
+
 
         Route::apiResource('organization/employee/salarystructure', SalaryStructureController::class);
 
@@ -275,11 +310,15 @@ Route::prefix('v1')->group(function () {
             Route::post('/clock-in', [AttendanceController::class, 'clockIn']);
             Route::post('/clock-out', [AttendanceController::class, 'clockOut']);
             Route::delete('/destroy/{attendance}', [AttendanceController::class, 'destroy']);
+            Route::get('/get-attendance/{employee_id}/{date}', [AttendanceController::class, 'getEmployeeAttendance']);
+            Route::put('/approve-or-reject-employee-attendance-change-request/{Id}', [AttendanceController::class, 'approveAttendanceChange']);
+            Route::get('/manual-change-requests', [AttendanceController::class, 'getAttendancechangeRequests']);
 
             // Extra work on holiday
             Route::post('/work-on-holiday', [AttendanceController::class, 'RequestWorkOnHoliday']);
             Route::get('/work-on-holiday', [AttendanceController::class, 'ShowHolidayRequests']);
             Route::post('/approve-work-on-holiday', [AttendanceController::class, 'ApproveWorkOnHoliday']);
+            Route::get('/employee-attendance-summary', [AttendanceController::class, 'EmployeeAttendanceSummary']);
         });
 
         Route::prefix('leave')->group(function () {
@@ -291,87 +330,87 @@ Route::prefix('v1')->group(function () {
             Route::get('/show/{id}', [LeaveController::class, 'show']);
             Route::delete('/destroy/{id}', [LeaveController::class, 'destroy']);
             Route::get('/leaveBalance', [LeaveController::class, 'leaveBalance']);
+            Route::get('/leaves-summary', [LeaveController::class, 'getLeavesSummary']);
+            Route::get('/xero-leave-types/{organization_id}', [LeaveController::class, 'getXeroLeaveTypes']);
+            Route::post('/assign-employee-leave-types', [LeaveController::class, 'assignEmployeeleaveType']);
         });
 
-                    // Employee Documents
-            Route::prefix('employee-documents')->group(function () {
-                Route::get('/', [EmployeeDocumentController::class, 'index']);
-                Route::post('/', [EmployeeDocumentController::class, 'store']);
-                Route::get('/{id}', [EmployeeDocumentController::class, 'show']);
-                Route::put('/{id}', [EmployeeDocumentController::class, 'update']);
-                Route::patch('/{id}', [EmployeeDocumentController::class, 'update']);
-                Route::delete('/{id}', [EmployeeDocumentController::class, 'destroy']);
-                Route::get('/by-employee/{employeeId}', [EmployeeDocumentController::class, 'byEmployee']);
-            });
+        // Employee Documents
+        Route::prefix('employee-documents')->group(function () {
+            Route::get('/', [EmployeeDocumentController::class, 'index']);
+            Route::post('/', [EmployeeDocumentController::class, 'store']);
+            Route::get('/{id}', [EmployeeDocumentController::class, 'show']);
+            Route::put('/{id}', [EmployeeDocumentController::class, 'update']);
+            Route::patch('/{id}', [EmployeeDocumentController::class, 'update']);
+            Route::delete('/{id}', [EmployeeDocumentController::class, 'destroy']);
+            Route::get('/by-employee/{employeeId}', [EmployeeDocumentController::class, 'byEmployee']);
+        });
 
-            // Employee Exit
-            Route::prefix('employee-exits')->group(function () {
-                Route::get('/', [EmployeeExitController::class, 'index']);
-                Route::post('/', [EmployeeExitController::class, 'store']);
-                Route::get('/{id}', [EmployeeExitController::class, 'show']);
-                Route::put('/{id}', [EmployeeExitController::class, 'update']);
-                Route::patch('/{id}', [EmployeeExitController::class, 'update']);
-                Route::delete('/{id}', [EmployeeExitController::class, 'destroy']);
-                Route::get('/by-employee/{employeeId}', [EmployeeExitController::class, 'byEmployee']);
-            });
+        // Employee Exit
+        Route::prefix('employee-exits')->group(function () {
+            Route::get('/', [EmployeeExitController::class, 'index']);
+            Route::post('/', [EmployeeExitController::class, 'store']);
+            Route::get('/{id}', [EmployeeExitController::class, 'show']);
+            Route::put('/{id}', [EmployeeExitController::class, 'update']);
+            Route::patch('/{id}', [EmployeeExitController::class, 'update']);
+            Route::delete('/{id}', [EmployeeExitController::class, 'destroy']);
+            Route::get('/by-employee/{employeeId}', [EmployeeExitController::class, 'byEmployee']);
+        });
 
-            // Employment History
-            Route::prefix('employment-history')->group(function () {
-                Route::get('/', [EmploymentHistoryController::class, 'index']);
-                Route::post('/', [EmploymentHistoryController::class, 'store']);
-                Route::get('/{id}', [EmploymentHistoryController::class, 'show']);
-                Route::put('/{id}', [EmploymentHistoryController::class, 'update']);
-                Route::patch('/{id}', [EmploymentHistoryController::class, 'update']);
-                Route::delete('/{id}', [EmploymentHistoryController::class, 'destroy']);
-                Route::get('/by-employee/{employeeId}', [EmploymentHistoryController::class, 'byEmployee']);
-            });
+        // Employment History
+        Route::prefix('employment-history')->group(function () {
+            Route::get('/', [EmploymentHistoryController::class, 'index']);
+            Route::post('/', [EmploymentHistoryController::class, 'store']);
+            Route::get('/{id}', [EmploymentHistoryController::class, 'show']);
+            Route::put('/{id}', [EmploymentHistoryController::class, 'update']);
+            Route::patch('/{id}', [EmploymentHistoryController::class, 'update']);
+            Route::delete('/{id}', [EmploymentHistoryController::class, 'destroy']);
+            Route::get('/by-employee/{employeeId}', [EmploymentHistoryController::class, 'byEmployee']);
+        });
 
-            // Probation Periods
-            Route::prefix('probation-periods')->group(function () {
-                Route::get('/', [ProbationPeriodController::class, 'index']);
-                Route::post('/', [ProbationPeriodController::class, 'store']);
-                Route::get('/{id}', [ProbationPeriodController::class, 'show']);
-                Route::put('/{id}', [ProbationPeriodController::class, 'update']);
-                Route::patch('/{id}', [ProbationPeriodController::class, 'update']);
-                Route::delete('/{id}', [ProbationPeriodController::class, 'destroy']);
-                Route::get('/by-employee/{employeeId}', [ProbationPeriodController::class, 'byEmployee']);
-            });
-
-
-            Route::prefix('offboarding-tasks')->group(function () {
-                Route::get('/', [OffboardingTaskController::class, 'index']);
-                Route::post('/', [OffboardingTaskController::class, 'store']);
-                Route::get('/{id}', [OffboardingTaskController::class, 'show']);
-                Route::put('/{id}', [OffboardingTaskController::class, 'update']);
-                Route::patch('/{id}', [OffboardingTaskController::class, 'update']);
-                Route::delete('/{id}', [OffboardingTaskController::class, 'destroy']);
-                Route::patch('/{id}/complete', [OffboardingTaskController::class, 'markCompleted']);
-                Route::get('/overdue/list', [OffboardingTaskController::class, 'overdue']);
-            });
-
-            Route::prefix('offboarding-templates')->group(function () {
-                Route::get('/', [OffboardingTemplateController::class, 'index']);
-                Route::post('/', [OffboardingTemplateController::class, 'store']);
-                Route::get('/{id}', [OffboardingTemplateController::class, 'show']);
-                Route::put('/{id}', [OffboardingTemplateController::class, 'update']);
-                Route::patch('/{id}', [OffboardingTemplateController::class, 'update']);
-                Route::delete('/{id}', [OffboardingTemplateController::class, 'destroy']);
-                Route::post('/{id}/clone', [OffboardingTemplateController::class, 'clone']);
-            });
-
-            Route::prefix('offboarding-template-tasks')->group(function () {
-                Route::get('/', [OffboardingTemplateTaskController::class, 'index']);
-                Route::post('/', [OffboardingTemplateTaskController::class, 'store']);
-                Route::get('/{id}', [OffboardingTemplateTaskController::class, 'show']);
-                Route::put('/{id}', [OffboardingTemplateTaskController::class, 'update']);
-                Route::patch('/{id}', [OffboardingTemplateTaskController::class, 'update']);
-                Route::delete('/{id}', [OffboardingTemplateTaskController::class, 'destroy']);
-                Route::get('/template/{templateId}', [OffboardingTemplateTaskController::class, 'byTemplate']);
-            });
+        // Probation Periods
+        Route::prefix('probation-periods')->group(function () {
+            Route::get('/', [ProbationPeriodController::class, 'index']);
+            Route::post('/', [ProbationPeriodController::class, 'store']);
+            Route::get('/{id}', [ProbationPeriodController::class, 'show']);
+            Route::put('/{id}', [ProbationPeriodController::class, 'update']);
+            Route::patch('/{id}', [ProbationPeriodController::class, 'update']);
+            Route::delete('/{id}', [ProbationPeriodController::class, 'destroy']);
+            Route::get('/by-employee/{employeeId}', [ProbationPeriodController::class, 'byEmployee']);
+        });
 
 
+        Route::prefix('offboarding-tasks')->group(function () {
+            Route::get('/', [OffboardingTaskController::class, 'index']);
+            Route::post('/', [OffboardingTaskController::class, 'store']);
+            Route::get('/{id}', [OffboardingTaskController::class, 'show']);
+            Route::put('/{id}', [OffboardingTaskController::class, 'update']);
+            Route::patch('/{id}', [OffboardingTaskController::class, 'update']);
+            Route::delete('/{id}', [OffboardingTaskController::class, 'destroy']);
+            Route::patch('/{id}/complete', [OffboardingTaskController::class, 'markCompleted']);
+            Route::get('/overdue/list', [OffboardingTaskController::class, 'overdue']);
+        });
 
-            Route::prefix('shifts')->group(function () {
+        Route::prefix('offboarding-templates')->group(function () {
+            Route::get('/', [OffboardingTemplateController::class, 'index']);
+            Route::post('/', [OffboardingTemplateController::class, 'store']);
+            Route::get('/{id}', [OffboardingTemplateController::class, 'show']);
+            Route::put('/{id}', [OffboardingTemplateController::class, 'update']);
+            Route::patch('/{id}', [OffboardingTemplateController::class, 'update']);
+            Route::delete('/{id}', [OffboardingTemplateController::class, 'destroy']);
+            Route::post('/{id}/clone', [OffboardingTemplateController::class, 'clone']);
+        });
+
+        Route::prefix('offboarding-template-tasks')->group(function () {
+            Route::get('/', [OffboardingTemplateTaskController::class, 'index']);
+            Route::post('/', [OffboardingTemplateTaskController::class, 'store']);
+            Route::get('/{id}', [OffboardingTemplateTaskController::class, 'show']);
+            Route::put('/{id}', [OffboardingTemplateTaskController::class, 'update']);
+            Route::patch('/{id}', [OffboardingTemplateTaskController::class, 'update']);
+            Route::delete('/{id}', [OffboardingTemplateTaskController::class, 'destroy']);
+            Route::get('/template/{templateId}', [OffboardingTemplateTaskController::class, 'byTemplate']);
+        });
+        Route::prefix('shifts')->group(function () {
             Route::get('/', [ShiftController::class, 'index']);
             Route::post('/', [ShiftController::class, 'store']);
             Route::get('/{id}', [ShiftController::class, 'show']);
@@ -420,63 +459,69 @@ Route::prefix('v1')->group(function () {
 
 
         Route::prefix('performance-review-cycles')->group(function () {
-        Route::get('/', [PerformanceReviewCycleController::class, 'index']);
-        Route::post('/', [PerformanceReviewCycleController::class, 'store']);
-        Route::get('/{id}', [PerformanceReviewCycleController::class, 'show']);
-        Route::put('/{id}', [PerformanceReviewCycleController::class, 'update']);
-        Route::patch('/{id}', [PerformanceReviewCycleController::class, 'update']);
-        Route::delete('/{id}', [PerformanceReviewCycleController::class, 'destroy']);
-        Route::get('/status/{status}', [PerformanceReviewCycleController::class, 'status']);
-    });
+            Route::get('/', [PerformanceReviewCycleController::class, 'index']);
+            Route::post('/', [PerformanceReviewCycleController::class, 'store']);
+            Route::get('/{id}', [PerformanceReviewCycleController::class, 'show']);
+            Route::put('/{id}', [PerformanceReviewCycleController::class, 'update']);
+            Route::patch('/{id}', [PerformanceReviewCycleController::class, 'update']);
+            Route::delete('/{id}', [PerformanceReviewCycleController::class, 'destroy']);
+            Route::get('/status/{status}', [PerformanceReviewCycleController::class, 'status']);
+        });
 
-    Route::prefix('performance-goals')->group(function () {
-        Route::get('/', [PerformanceGoalController::class, 'index']);
-        Route::post('/', [PerformanceGoalController::class, 'store']);
-        Route::get('/{id}', [PerformanceGoalController::class, 'show']);
-        Route::put('/{id}', [PerformanceGoalController::class, 'update']);
-        Route::patch('/{id}', [PerformanceGoalController::class, 'update']);
-        Route::delete('/{id}', [PerformanceGoalController::class, 'destroy']);
-        Route::get('/cycle/{cycleId}', [PerformanceGoalController::class, 'byCycle']);
-        Route::get('/status/{status}', [PerformanceGoalController::class, 'byStatus']);
-        Route::post('/bulk', [PerformanceGoalController::class, 'bulkAssign']);
-    });
+        Route::prefix('performance-goals')->group(function () {
+            Route::get('/', [PerformanceGoalController::class, 'index']);
+            Route::post('/', [PerformanceGoalController::class, 'store']);
+            Route::get('/{id}', [PerformanceGoalController::class, 'show']);
+            Route::put('/{id}', [PerformanceGoalController::class, 'update']);
+            Route::patch('/{id}', [PerformanceGoalController::class, 'update']);
+            Route::delete('/{id}', [PerformanceGoalController::class, 'destroy']);
+            Route::get('/cycle/{cycleId}', [PerformanceGoalController::class, 'byCycle']);
+            Route::get('/status/{status}', [PerformanceGoalController::class, 'byStatus']);
+            Route::post('/bulk', [PerformanceGoalController::class, 'bulkAssign']);
+        });
 
-    Route::prefix('goal-key-results')->group(function () {
-        Route::get('/', [GoalKeyResultController::class, 'index']);
-        Route::post('/', [GoalKeyResultController::class, 'store']);
-        Route::get('/{id}', [GoalKeyResultController::class, 'show']);
-        Route::put('/{id}', [GoalKeyResultController::class, 'update']);
-        Route::patch('/{id}', [GoalKeyResultController::class, 'update']);
-        Route::delete('/{id}', [GoalKeyResultController::class, 'destroy']);
-        Route::patch('/bulk', [GoalKeyResultController::class, 'bulkUpdate']);
-    });
+        Route::prefix('goal-key-results')->group(function () {
+            Route::get('/', [GoalKeyResultController::class, 'index']);
+            Route::post('/', [GoalKeyResultController::class, 'store']);
+            Route::get('/{id}', [GoalKeyResultController::class, 'show']);
+            Route::put('/{id}', [GoalKeyResultController::class, 'update']);
+            Route::patch('/{id}', [GoalKeyResultController::class, 'update']);
+            Route::delete('/{id}', [GoalKeyResultController::class, 'destroy']);
+            Route::patch('/bulk', [GoalKeyResultController::class, 'bulkUpdate']);
+        });
 
-    Route::prefix('performance-reviews')->group(function () {
-        Route::get('/', [PerformanceReviewController::class, 'index']);
-        Route::post('/', [PerformanceReviewController::class, 'store']);
-        Route::get('/{id}', [PerformanceReviewController::class, 'show']);
-        Route::put('/{id}', [PerformanceReviewController::class, 'update']);
-        Route::patch('/{id}', [PerformanceReviewController::class, 'update']);
-        Route::delete('/{id}', [PerformanceReviewController::class, 'destroy']);
-        Route::patch('/{id}/acknowledge', [PerformanceReviewController::class, 'acknowledge']);
-        Route::get('/employee/{employeeId}', [PerformanceReviewController::class, 'byEmployee']);
-        Route::get('/cycle/{cycleId}', [PerformanceReviewController::class, 'byCycle']);
-    });
+        Route::prefix('performance-reviews')->group(function () {
+            Route::get('/', [PerformanceReviewController::class, 'index']);
+            Route::post('/', [PerformanceReviewController::class, 'store']);
+            Route::get('/{id}', [PerformanceReviewController::class, 'show']);
+            Route::put('/{id}', [PerformanceReviewController::class, 'update']);
+            Route::patch('/{id}', [PerformanceReviewController::class, 'update']);
+            Route::delete('/{id}', [PerformanceReviewController::class, 'destroy']);
+            Route::patch('/{id}/acknowledge', [PerformanceReviewController::class, 'acknowledge']);
+            Route::get('/employee/{employeeId}', [PerformanceReviewController::class, 'byEmployee']);
+            Route::get('/cycle/{cycleId}', [PerformanceReviewController::class, 'byCycle']);
+        });
 
-    Route::prefix('performance-feedback')->group(function () {
-        Route::get('/', [PerformanceFeedbackController::class, 'index']);
-        Route::post('/', [PerformanceFeedbackController::class, 'store']);
-        Route::get('/{id}', [PerformanceFeedbackController::class, 'show']);
-        Route::put('/{id}', [PerformanceFeedbackController::class, 'update']);
-        Route::patch('/{id}', [PerformanceFeedbackController::class, 'update']);
-        Route::delete('/{id}', [PerformanceFeedbackController::class, 'destroy']);
-        Route::patch('/{id}/read', [PerformanceFeedbackController::class, 'markRead']);
-        Route::get('/receiver/{employeeId}', [PerformanceFeedbackController::class, 'forReceiver']);
-    });
+        Route::prefix('performance-feedback')->group(function () {
+            Route::get('/', [PerformanceFeedbackController::class, 'index']);
+            Route::post('/', [PerformanceFeedbackController::class, 'store']);
+            Route::get('/{id}', [PerformanceFeedbackController::class, 'show']);
+            Route::put('/{id}', [PerformanceFeedbackController::class, 'update']);
+            Route::patch('/{id}', [PerformanceFeedbackController::class, 'update']);
+            Route::delete('/{id}', [PerformanceFeedbackController::class, 'destroy']);
+            Route::patch('/{id}/read', [PerformanceFeedbackController::class, 'markRead']);
+            Route::get('/receiver/{employeeId}', [PerformanceFeedbackController::class, 'forReceiver']);
+        });
 
+        // Xero Connection Routes
+        Route::prefix('xero-connections')->group(function () {
+            Route::get('/', [XeroConnectionController::class, 'index']);
+            Route::post('/', [XeroConnectionController::class, 'store']);
+            Route::get('/{id}', [XeroConnectionController::class, 'show']);
+            Route::match(['put', 'post'], '/{id}', [XeroConnectionController::class, 'update']);
+            Route::delete('/{id}', [XeroConnectionController::class, 'destroy']);
+        });
 
-
-
-
+        Route::post('/xero/sync-employee', [XeroEmployeeController::class, 'sync']);
     });
 });

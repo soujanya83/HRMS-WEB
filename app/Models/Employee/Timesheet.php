@@ -24,7 +24,8 @@ class Timesheet extends Model
         'approved_by',
         'approved_at',
         'remarks',
-        'employee_id'
+        'employee_id',
+        'billable_hours'
     ];
 
     protected $casts = [

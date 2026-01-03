@@ -5,6 +5,9 @@ namespace App\Models\Employee;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Models\OrganizationAttendanceRule;
+use App\Models\Employee\Employee;
+
 
 class Attendance extends Model
 {
@@ -19,7 +22,8 @@ class Attendance extends Model
         'notes',
         'total_work_hours',
         'break_start',
-        'break_end'
+        'break_end',
+        'is_late'
     ];
 
     protected $casts = [
@@ -63,4 +67,11 @@ class Attendance extends Model
 
         return $this->check_in->diffInHours($this->check_out, false);
     }
+
+    public function attendanceRule(): BelongsTo
+    {
+        return $this->belongsTo(OrganizationAttendanceRule::class, 'organization_id', 'organization_id');
+    }
+
+
 }
