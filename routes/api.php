@@ -441,14 +441,15 @@ Route::prefix('v1')->group(function () {
         Route::post('/bulk', [PerformanceGoalController::class, 'bulkAssign']);
     });
 
-    Route::prefix('goal-key-results')->group(function () {
+ Route::prefix('goal-key-results')->group(function () {
+        Route::patch('/bulk', [GoalKeyResultController::class, 'bulkUpdate']);
         Route::get('/', [GoalKeyResultController::class, 'index']);
         Route::post('/', [GoalKeyResultController::class, 'store']);
         Route::get('/{id}', [GoalKeyResultController::class, 'show']);
         Route::put('/{id}', [GoalKeyResultController::class, 'update']);
-        Route::patch('/{id}', [GoalKeyResultController::class, 'update']);
+        Route::patch('/{id}', [GoalKeyResultController::class, 'update'])
+        ->whereNumber('id');
         Route::delete('/{id}', [GoalKeyResultController::class, 'destroy']);
-        Route::patch('/bulk', [GoalKeyResultController::class, 'bulkUpdate']);
     });
 
     Route::prefix('performance-reviews')->group(function () {
