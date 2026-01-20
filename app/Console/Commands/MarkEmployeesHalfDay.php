@@ -7,6 +7,7 @@ use Carbon\Carbon;
 use App\Models\User;
 use App\Models\Employee\Leave;
 use App\Models\Employee\Attendance;
+use App\Models\Employee\Employee;
 
 class MarkEmployeesHalfDay extends Command
 {
@@ -32,18 +33,22 @@ class MarkEmployeesHalfDay extends Command
         $today = Carbon::today()->toDateString();
 
         // employees who not marked attendance and arriving more than grace time and exceeded half_day_time as per organization
-        $UserWithOutAttendance = User::whereDoesntHave('attendances', function($query) use ($today){
-   $query->whereDate('created_at', $today);
+//         $UserWithOutAttendance = User::whereDoesntHave('attendances', function($query) use ($today){
+//    $query->whereDate('created_at', $today);
+//         })->get();
+
+  $UserWithOutAttendance = Employee::whereDoesntHave('attendances', function ($query) use ($today) {
+            $query->whereDate('date', $today);
         })->get();
 
         foreach( $UserWithOutAttendance  as $user ){
-              if (!$user->employee) {
+              if (!$user) {
         $this->warn("Skipping: No employee record found for user ID {$user->id}");
         continue;
     }
 
        Attendance::create([
-        'employee_id' => $user->employee->id,  // ✅ correct ID
+        'employee_id' => $user->id,  // ✅ correct ID
         'status' => 'half_day',
         'date' => $today,
     ]);

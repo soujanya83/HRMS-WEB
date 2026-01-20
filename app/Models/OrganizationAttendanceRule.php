@@ -75,4 +75,10 @@ class OrganizationAttendanceRule extends Model
     {
         return $this->belongsTo(Employee::class, 'created_by');
     }
+
+    public function roster()
+    {
+        return $this->hasMany(\App\Models\Rostering\Roster::class, 'organization_id', 'organization_id');
+    }
+
 }

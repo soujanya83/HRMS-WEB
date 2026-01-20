@@ -1,0 +1,32 @@
+{
+    "organization_id": 4,
+    "employee_id": 1,
+    "employee_name": "John Doe",
+    "pay_period": "2025-10",
+    "from_date": "2025-10-01",
+    "to_date": "2025-10-31",
+    "gross_earnings": 92641.13,
+    "gross_deductions": 3382.05,
+    "net_salary": 89259.08,
+    "working_days": 4,
+    "present_days": 3,
+    "half_days": 2,
+    "leave_days_total": 4,
+    "paid_leave_days": 4,
+    "unpaid_leave_days": 0,
+    "unpaid_leave_deduction": 0,
+    "overtime_hours": "2.00",
+    "overtime_amount": 3125,
+    "tax_deducted": 3382.05,
+    "component_breakdown": [
+        {
+            "name": "HR",
+            "category": "benefit",
+            "amount": 25000
+        }
+    ],
+    "deduction_details": {
+        "unpaid_leave": 0,
+        "tax": 3382.05
+    }
+}

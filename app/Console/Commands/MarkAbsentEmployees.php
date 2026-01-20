@@ -7,6 +7,7 @@ use Carbon\Carbon;
 use App\Models\User;
 use App\Models\Employee\Leave;
 use App\Models\Employee\Attendance;
+use App\Models\Employee\Employee;
 
 class MarkAbsentEmployees extends Command
 {
@@ -29,26 +30,26 @@ class MarkAbsentEmployees extends Command
      */
     public function handle()
     {
-          $today = Carbon::today()->toDateString();
+        $today = Carbon::today()->toDateString();
 
-        // Get users who haven't marked attendance today
-        $usersWithoutAttendance = User::whereDoesntHave('attendances', function ($query) use ($today) {
-            $query->whereDate('created_at', $today);
+        $usersWithoutAttendance = Employee::whereDoesntHave('attendances', function ($query) use ($today) {
+            $query->whereDate('date', $today);
         })->get();
+    // dd($usersWithoutAttendance);
 
-    foreach ($usersWithoutAttendance as $user) {
-
-    if (!$user->employee) {
-        $this->warn("Skipping: No employee record found for user ID {$user->id}");
-        continue;
-    }
-
-    Attendance::create([
-        'employee_id' => $user->employee->id,  // ✅ correct ID
-        'status' => 'absent',
-        'date' => $today,
-    ]);
-}
+        foreach ($usersWithoutAttendance as $user) {
+// dd($user);
+            if (!$user) {
+                $this->warn("Skipping: No employee record found for user ID {$user->id}");
+                continue;
+            }
+// dd($user->id);
+            Attendance::create([
+                'employee_id' => $user->id,  // ✅ correct ID
+                'status' => 'absent',
+                'date' => $today,
+            ]);
+        }
 
         $this->info('Absent users marked successfully for ' . $today);
     }

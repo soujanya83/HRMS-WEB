@@ -24,6 +24,7 @@ class Payrolls extends Model
         'net_salary',
         'working_days',
         'present_days',
+        'half_days',
         'leave_days',
         'overtime_hours',
         'overtime_amount',
@@ -35,7 +36,9 @@ class Payrolls extends Model
         'payment_method',
         'transaction_ref',
         'component_breakdown',
-        'remarks'
+        'remarks',
+        'payslip_link',
+        'payslip_pdf_link'
     ];
 
     protected $casts = [

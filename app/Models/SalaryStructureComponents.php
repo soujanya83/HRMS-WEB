@@ -33,4 +33,6 @@ class SalaryStructureComponents extends Model
     {
         return $this->belongsTo(SalaryComponentTypes::class, 'component_type_id');
     }
+
+    
 }
