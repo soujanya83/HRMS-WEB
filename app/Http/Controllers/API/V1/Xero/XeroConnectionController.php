@@ -239,11 +239,18 @@ class XeroConnectionController extends Controller
 
 public function callback(Request $request)
 {
+    Log::info('Xero callback hit', $request->all());
+
     if (!$request->code || !$request->state) {
         abort(400, 'Invalid callback');
     }
 
-    $state = json_decode(decrypt($request->state), true);
+    try {
+        $state = json_decode(decrypt($request->state), true);
+    } catch (\Exception $e) {
+        Log::error('State decrypt failed', ['error' => $e->getMessage()]);
+        abort(500, 'State decrypt failed');
+    }
 
     $token = Http::asForm()->post(
         'https://identity.xero.com/connect/token',
@@ -256,9 +263,18 @@ public function callback(Request $request)
         ]
     )->json();
 
+    if (isset($token['error'])) {
+        Log::error('Xero token error', $token);
+        abort(500, 'Token exchange failed');
+    }
+
     $tenants = Http::withToken($token['access_token'])
         ->get('https://api.xero.com/connections')
         ->json();
+
+    if (empty($tenants)) {
+        abort(500, 'No Xero tenant found');
+    }
 
     $tenant = $tenants[0];
 
@@ -277,6 +293,7 @@ public function callback(Request $request)
 
     return response('Xero connected successfully. You can close this tab.');
 }
+
 
 public function status(Request $request)
 {
