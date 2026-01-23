@@ -5,6 +5,10 @@ namespace App\Http\Controllers\API\V1\Xero;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\XeroConnection;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
+
 
 
 class XeroConnectionController extends Controller
@@ -207,4 +211,67 @@ class XeroConnectionController extends Controller
             'message' => 'Connection removed successfully.'
         ]);
     }
+
+         public function redirect()
+    {
+        $query = http_build_query([
+            'response_type' => 'code',
+            'client_id'     => config('services.xero.client_id'),
+            'redirect_uri'  => config('services.xero.redirect'),
+            'scope'         => config('services.xero.scopes'),
+            'state'         => csrf_token(),
+        ]);
+
+        return redirect('https://login.xero.com/identity/connect/authorize?' . $query);
+    }
+
+
+    public function callback(Request $request)
+{
+    if (!$request->code) {
+        return response()->json(['error' => 'Authorization failed'], 400);
+    }
+
+    $response = Http::asForm()->post(
+        'https://identity.xero.com/connect/token',
+        [
+            'grant_type'    => 'authorization_code',
+            'code'          => $request->code,
+            'redirect_uri'  => config('services.xero.redirect'),
+            'client_id'     => config('services.xero.client_id'),
+            'client_secret' => config('services.xero.client_secret'),
+        ]
+    );
+
+    $tokenData = $response->json();
+
+    // Step 3: Get Tenant (Organisation)
+    $tenants = Http::withHeaders([
+        'Authorization' => 'Bearer ' . $tokenData['access_token'],
+    ])->get('https://api.xero.com/connections')->json();
+
+    $tenant = $tenants[0]; // usually single org
+
+    XeroConnection::updateOrCreate(
+        ['organization_id' => Auth::user()->organization_id],
+        [
+            'tenant_id'                  => $tenant['tenantId'],
+            'tenant_name'                => $tenant['tenantName'],
+            'xero_client_id'             => config('services.xero.client_id'),
+            'xero_client_secret'         => config('services.xero.client_secret'),
+            'access_token'               => $tokenData['access_token'],
+            'refresh_token'              => $tokenData['refresh_token'],
+            'id_token'                   => $tokenData['id_token'] ?? null,
+            'token_expires_at'            => now()->addSeconds($tokenData['expires_in']),
+            'refresh_token_expires_at'   => now()->addDays(60),
+            'connected_at'               => now(),
+            'is_active'                  => true,
+            'scopes'                     => explode(' ', config('services.xero.scopes')),
+        ]
+    );
+
+    return redirect('/settings/xero')->with('success', 'Xero Connected');
+}
+
+
 }

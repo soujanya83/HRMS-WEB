@@ -62,6 +62,11 @@ use App\Http\Controllers\API\V1\{
     MeController
 };
 
+
+Route::get('/xero/connect', [XeroConnectionController::class, 'redirect']);
+Route::get('/xero/callback', [XeroConnectionController::class, 'callback']);
+
+
 Route::prefix('v1')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
