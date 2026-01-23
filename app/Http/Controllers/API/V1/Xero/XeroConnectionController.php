@@ -8,6 +8,7 @@ use App\Models\XeroConnection;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 
 
@@ -212,25 +213,30 @@ class XeroConnectionController extends Controller
         ]);
     }
 
-         public function redirect()
-    {
-        $query = http_build_query([
-            'response_type' => 'code',
-            'client_id'     => config('services.xero.client_id'),
-            'redirect_uri'  => config('services.xero.redirect'),
-            'scope'         => config('services.xero.scopes'),
-            'state'         => csrf_token(),
-        ]);
-
-        return redirect('https://login.xero.com/identity/connect/authorize?' . $query);
-    }
-
-
-    public function callback(Request $request)
+        public function connect(Request $request)
 {
-    if (!$request->code) {
-        return response()->json(['error' => 'Authorization failed'], 400);
+    $query = http_build_query([
+        'response_type' => 'code',
+        'client_id'     => config('services.xero.client_id'),
+        'redirect_uri'  => config('services.xero.redirect'),
+        'scope'         => config('services.xero.scopes'),
+        'state'         => Str::random(40), // ❌ csrf_token nahi
+    ]);
+
+    return response()->json([
+        'auth_url' => 'https://login.xero.com/identity/connect/authorize?' . $query
+    ]);
+}
+
+
+
+  public function callback(Request $request)
+{
+    if (!$request->code || !$request->state) {
+        abort(400, 'Invalid Xero callback');
     }
+
+    $state = json_decode(decrypt($request->state), true);
 
     $response = Http::asForm()->post(
         'https://identity.xero.com/connect/token',
@@ -241,36 +247,29 @@ class XeroConnectionController extends Controller
             'client_id'     => config('services.xero.client_id'),
             'client_secret' => config('services.xero.client_secret'),
         ]
-    );
+    )->json();
 
-    $tokenData = $response->json();
+    $tenants = Http::withToken($response['access_token'])
+        ->get('https://api.xero.com/connections')
+        ->json();
 
-    // Step 3: Get Tenant (Organisation)
-    $tenants = Http::withHeaders([
-        'Authorization' => 'Bearer ' . $tokenData['access_token'],
-    ])->get('https://api.xero.com/connections')->json();
-
-    $tenant = $tenants[0]; // usually single org
+    $tenant = $tenants[0];
 
     XeroConnection::updateOrCreate(
-        ['organization_id' => Auth::user()->organization_id],
+        ['organization_id' => $state['org_id']],
         [
-            'tenant_id'                  => $tenant['tenantId'],
-            'tenant_name'                => $tenant['tenantName'],
-            'xero_client_id'             => config('services.xero.client_id'),
-            'xero_client_secret'         => config('services.xero.client_secret'),
-            'access_token'               => $tokenData['access_token'],
-            'refresh_token'              => $tokenData['refresh_token'],
-            'id_token'                   => $tokenData['id_token'] ?? null,
-            'token_expires_at'            => now()->addSeconds($tokenData['expires_in']),
-            'refresh_token_expires_at'   => now()->addDays(60),
-            'connected_at'               => now(),
-            'is_active'                  => true,
-            'scopes'                     => explode(' ', config('services.xero.scopes')),
+            'tenant_id'        => $tenant['tenantId'],
+            'tenant_name'      => $tenant['tenantName'],
+            'access_token'     => $response['access_token'],
+            'refresh_token'    => $response['refresh_token'],
+            'token_expires_at' => now()->addSeconds($response['expires_in']),
+            'connected_at'     => now(),
+            'is_active'        => true,
         ]
     );
 
-    return redirect('/settings/xero')->with('success', 'Xero Connected');
+    // React app redirect
+    return redirect(config('app.frontend_url') . '/settings/xero?status=connected');
 }
 
 

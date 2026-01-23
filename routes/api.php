@@ -63,7 +63,7 @@ use App\Http\Controllers\API\V1\{
 };
 
 
-Route::get('/xero/connect', [XeroConnectionController::class, 'redirect']);
+Route::get('/xero/connect', [XeroConnectionController::class, 'connect']);
 Route::get('/xero/callback', [XeroConnectionController::class, 'callback']);
 
 
