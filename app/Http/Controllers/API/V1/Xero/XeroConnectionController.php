@@ -213,14 +213,21 @@ class XeroConnectionController extends Controller
         ]);
     }
 
-        public function connect(Request $request)
+  public function connect(Request $request)
 {
+    $user = $request->user(); // sanctum user
+
+    $state = encrypt(json_encode([
+        'user_id' => $user->id,
+        'organization_id' => $user->organization_id,
+    ]));
+
     $query = http_build_query([
         'response_type' => 'code',
         'client_id'     => config('services.xero.client_id'),
         'redirect_uri'  => config('services.xero.redirect'),
         'scope'         => config('services.xero.scopes'),
-        'state'         => Str::random(40), // ❌ csrf_token nahi
+        'state'         => $state,
     ]);
 
     return response()->json([
@@ -230,15 +237,15 @@ class XeroConnectionController extends Controller
 
 
 
-  public function callback(Request $request)
+public function callback(Request $request)
 {
     if (!$request->code || !$request->state) {
-        abort(400, 'Invalid Xero callback');
+        abort(400, 'Invalid callback');
     }
 
     $state = json_decode(decrypt($request->state), true);
 
-    $response = Http::asForm()->post(
+    $token = Http::asForm()->post(
         'https://identity.xero.com/connect/token',
         [
             'grant_type'    => 'authorization_code',
@@ -249,28 +256,42 @@ class XeroConnectionController extends Controller
         ]
     )->json();
 
-    $tenants = Http::withToken($response['access_token'])
+    $tenants = Http::withToken($token['access_token'])
         ->get('https://api.xero.com/connections')
         ->json();
 
     $tenant = $tenants[0];
 
     XeroConnection::updateOrCreate(
-        ['organization_id' => $state['org_id']],
+        ['organization_id' => $state['organization_id']],
         [
             'tenant_id'        => $tenant['tenantId'],
             'tenant_name'      => $tenant['tenantName'],
-            'access_token'     => $response['access_token'],
-            'refresh_token'    => $response['refresh_token'],
-            'token_expires_at' => now()->addSeconds($response['expires_in']),
+            'access_token'     => $token['access_token'],
+            'refresh_token'    => $token['refresh_token'],
+            'token_expires_at' => now()->addSeconds($token['expires_in']),
             'connected_at'     => now(),
             'is_active'        => true,
         ]
     );
 
-    // React app redirect
-    return redirect(config('app.frontend_url') . '/settings/xero?status=connected');
+    return response('Xero connected successfully. You can close this tab.');
 }
+
+public function status(Request $request)
+{
+    $connection = XeroConnection::where(
+        'organization_id',
+        $request->user()->organization_id
+    )->first();
+
+    return response()->json([
+        'connected' => (bool) $connection,
+        'tenant' => $connection?->tenant_name,
+        'expires_at' => $connection?->token_expires_at,
+    ]);
+}
+
 
 
 }

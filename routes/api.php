@@ -63,8 +63,8 @@ use App\Http\Controllers\API\V1\{
 };
 
 
-Route::get('/xero/connect', [XeroConnectionController::class, 'connect']);
-Route::get('/xero/callback', [XeroConnectionController::class, 'callback']);
+// Route::get('/xero/connect', [XeroConnectionController::class, 'connect']);
+// Route::get('/xero/callback', [XeroConnectionController::class, 'callback']);
 
 
 Route::prefix('v1')->group(function () {
@@ -72,6 +72,10 @@ Route::prefix('v1')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
 
     Route::middleware('auth:sanctum')->group(function () {
+
+         Route::get('/xero/connect', [XeroConnectionController::class, 'connect']);
+
+         Route::get('/xero/status', [XeroConnectionController::class, 'status']);
 
 
 
