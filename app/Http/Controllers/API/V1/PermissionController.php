@@ -18,9 +18,13 @@ class PermissionController extends Controller
         $request->validate([
             'name' => 'required|string|unique:permissions,name',
         ]);
+        $organizationId = $request->organization_id ?? (auth()->user()->organization_id ?? null); 
 
         $permission = Permission::create([
             'name' => $request->name,
+            'guard_name' => 'web',
+            //'guard_name' => $request->guard_name === 'api' ? 'api' : 'web',
+            'organization_id' => $organizationId,
         ]);
 
         return response()->json($permission, 201);
