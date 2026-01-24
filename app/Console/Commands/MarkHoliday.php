@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\Employee\Leave;
 use App\Models\Employee\Attendance;
 use App\Models\HolidayModel;
+use App\Models\Employee\Employee;
 
 class MarkHoliday extends Command
 {
@@ -33,21 +34,27 @@ class MarkHoliday extends Command
         $today = Carbon::today()->toDateString();
 
         // mark all the employee with holiday
-        $users = User::whereDoesntHave('attendances', function ($query) use ($today) {
-            $query->whereDate('created_at', $today);
-        })->get();
+        // $users = User::whereDoesntHave('attendances', function ($query) use ($today) {
+        //     $query->whereDate('created_at', $today);
+        // })->get();
 
-        foreach ($users as $user) {
-            if (!$user->employee) {
+          $UserWithOutAttendance = Employee::whereDoesntHave('attendances', function ($query) use ($today) {
+            $query->whereDate('date', $today);
+        })->get();
+        // dd($UserWithOutAttendance);
+
+        foreach ($UserWithOutAttendance as $user) {
+            if (!$user) {
                 $this->warn("Skipping: No employee record found for user ID {$user->id}");
                 continue;
             }
 
                Attendance::create([
-        'employee_id' => $user->employee->id,  // ✅ correct ID
+        'employee_id' => $user->id,  // ✅ correct ID
         'status' => 'holiday',
         'date' => $today,
     ]);
+        $this->info('Holiday users marked successfully for ' . $today);
         }
     }
 }

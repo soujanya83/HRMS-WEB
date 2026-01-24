@@ -3,6 +3,8 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
+
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -19,6 +21,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // 👉 ADD THIS
         $middleware->alias([
             'org.role' => \App\Http\Middleware\OrgRoleMiddleware::class,
+        ]);
+
+        // ✅ CSRF EXCEPTION HERE
+        $middleware->validateCsrfTokens(except: [
+            'xero/callback',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
