@@ -18,9 +18,12 @@ class RoleController extends Controller
         $request->validate([
             'name' => 'required|string|unique:roles,name',
         ]);
-
+        $organizationId = $request->organization_id ?? (auth()->user()->organization_id ?? null);
         $role = Role::create([
             'name' => $request->name,
+            'guard_name' => 'web',
+            //'guard_name' => $request->guard_name === 'api' ? 'api' : 'web',
+            'organization_id' => $organizationId,
         ]);
 
         return response()->json($role, 201);
