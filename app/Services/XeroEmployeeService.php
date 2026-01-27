@@ -69,11 +69,16 @@ class XeroEmployeeService
 
             // Auto refresh token if needed
             $connection = app(XeroTokenService::class)->refreshIfNeeded($connection);
+            $connection->refresh(); // ✅ Database se latest data load karo
+
 
             // Always use fresh tokens
             $accessToken = $connection->access_token;
             $tenantId    = $connection->tenant_id;
 
+
+            // $accessToken = $connection->access_token;
+            // $tenantId    = $connection->tenant_id;
 
             if (!$accessToken) {
                 return [
