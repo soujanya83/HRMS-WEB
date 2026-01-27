@@ -304,7 +304,7 @@ public function status(Request $request)
     return response()->json([
         'status' => true,
         'debug' => [
-            'organization_id' => $request->user()->organization_id,
+            'organization_id' => 15,
             'connection_found' => (bool) $connection,
         ],
         'data' => [
