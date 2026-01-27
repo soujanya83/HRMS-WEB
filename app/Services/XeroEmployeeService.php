@@ -75,9 +75,6 @@ class XeroEmployeeService
             $tenantId    = $connection->tenant_id;
 
 
-            // $accessToken = $connection->access_token;
-            // $tenantId    = $connection->tenant_id;
-
             if (!$accessToken) {
                 return [
                     'status' => false,

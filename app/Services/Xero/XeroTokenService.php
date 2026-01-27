@@ -5,6 +5,10 @@ namespace App\Services\Xero;
 use App\Models\XeroConnection;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use Exception;
+use Carbon\Carbon;
+
 
 class XeroTokenService
 {
@@ -75,6 +79,14 @@ $connection->refresh_token = $json['refresh_token'];
 $connection->token_expires_at = now()->addSeconds($json['expires_in']);
 
 $connection->save();
+
+Log::info('After refresh check', [
+    'raw_db_token' => DB::table('xero_connections')
+        ->where('id', $connection->id)
+        ->value('access_token'),
+    'model_token' => $connection->fresh()->access_token,
+]);
+
 
     return $connection->fresh();
 }
