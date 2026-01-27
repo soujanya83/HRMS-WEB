@@ -298,7 +298,7 @@ public function status(Request $request)
 {
     $connection = XeroConnection::where(
         'organization_id',
-        $request->user()->organization_id
+        15
     )->first();
 
     return response()->json([
