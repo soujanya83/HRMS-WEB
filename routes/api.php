@@ -38,6 +38,8 @@ use App\Http\Controllers\API\V1\Attendance\OrganizationAttendanceRuleController;
 use App\Http\Controllers\API\V1\HolidayController;
 use App\Http\Controllers\API\V1\ProjectController;
 use App\Http\Controllers\API\V1\TaskController;
+use App\Http\Controllers\API\V1\ModuleController;
+
 
 use App\Http\Controllers\API\V1\Attendance\OvertimeRequestController;
 use App\Http\Controllers\API\V1\Employee\TimesheetController;
@@ -65,6 +67,8 @@ use App\Http\Controllers\API\V1\{
 
 // Route::get('/xero/connect', [XeroConnectionController::class, 'connect']);
 // Route::get('/xero/callback', [XeroConnectionController::class, 'callback']);
+
+
 
 
 Route::prefix('v1')->group(function () {
@@ -578,5 +582,12 @@ Route::prefix('v1')->group(function () {
         });
 
         Route::post('/xero/sync-employee', [XeroEmployeeController::class, 'sync']);
+    
+           
+    
+        // Module APIs
+Route::get('modules', [ModuleController::class, 'index']);
+Route::get('modules/{id}/pages', [ModuleController::class, 'pages']);
     });
+
 });
