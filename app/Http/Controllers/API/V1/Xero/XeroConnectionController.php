@@ -300,7 +300,7 @@ public function status(Request $request)
         'organization_id',
         $request->user()->organization_id
     )->first();
-print_r($connection); exit;
+    
     return response()->json([
         'connected' => (bool) $connection,
         'tenant' => $connection?->tenant_name,
