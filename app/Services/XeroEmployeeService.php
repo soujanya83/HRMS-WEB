@@ -7,7 +7,6 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Crypt;
 use Carbon\Carbon;
 use Exception;
-use Log;
 use Illuminate\Support\Facades\DB;
 use App\Services\XeroRefreshAccessTokenServices;
 use App\Models\EmployeeXeroConnection;
@@ -17,6 +16,11 @@ use App\Models\Employee\Employee;
 use App\Models\EmploymentType;
 use App\Models\SalaryStructure;
 use App\Services\Xero\XeroTokenService;
+use App\Services\Xero\XeroApiService;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 
 class XeroEmployeeService
@@ -68,13 +72,21 @@ class XeroEmployeeService
             // -----------------------------
 
             // Auto refresh token if needed
-            $connection = app(XeroTokenService::class)->refreshIfNeeded($connection);
+            Log::info('Before refresh', [
+            'token_last_6' => substr($connection->access_token, -6),
+            'expires_at' => $connection->token_expires_at
+        ]);
+
+        $connection = app(XeroTokenService::class)->refreshIfNeeded($connection);
         $connection = $connection->fresh();
 
+        Log::info('After refresh', [
+            'token_last_6' => substr($connection->access_token, -6),
+            'expires_at' => $connection->token_expires_at
+        ]);
 
-            // Always use fresh tokens
-            $accessToken = $connection->access_token;
-            $tenantId    = $connection->tenant_id;
+        $accessToken = $connection->access_token;
+        $tenantId = $connection->tenant_id;
 
 
             // $accessToken = $connection->access_token;
