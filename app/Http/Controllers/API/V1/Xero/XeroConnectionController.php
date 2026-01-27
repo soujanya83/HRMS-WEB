@@ -300,13 +300,23 @@ public function status(Request $request)
         'organization_id',
         $request->user()->organization_id
     )->first();
-    
+
     return response()->json([
-        'connected' => (bool) $connection,
-        'tenant' => $connection?->tenant_name,
-        'expires_at' => $connection?->token_expires_at,
+        'status' => true,
+        'debug' => [
+            'organization_id' => $request->user()->organization_id,
+            'connection_found' => (bool) $connection,
+        ],
+        'data' => [
+            'connected'   => (bool) $connection,
+            'tenant'      => $connection?->tenant_name,
+            'tenant_id'   => $connection?->tenant_id,
+            'expires_at'  => $connection?->token_expires_at,
+            'is_active'   => $connection?->is_active,
+        ]
     ]);
 }
+
 
 
 
