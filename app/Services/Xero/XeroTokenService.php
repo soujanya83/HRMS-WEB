@@ -70,11 +70,11 @@ class XeroTokenService
         'expires_in' => $json['expires_in'],
     ]);
 
-    $connection->update([
-        'access_token'     => $json['access_token'],
-        'refresh_token'    => $json['refresh_token'],
-        'token_expires_at' => now()->addSeconds($json['expires_in']),
-    ]);
+$connection->forceFill([
+    'access_token'     => $json['access_token'],
+    'refresh_token'    => $json['refresh_token'],
+    'token_expires_at' => now()->addSeconds($json['expires_in']),
+])->save();
 
     return $connection->fresh();
 }
