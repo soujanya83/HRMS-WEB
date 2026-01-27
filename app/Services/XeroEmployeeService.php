@@ -16,6 +16,8 @@ use App\Models\XeroTimesheet;
 use App\Models\Employee\Employee;
 use App\Models\EmploymentType;
 use App\Models\SalaryStructure;
+use App\Services\Xero\XeroTokenService;
+
 
 class XeroEmployeeService
 {
@@ -64,8 +66,17 @@ class XeroEmployeeService
             // -----------------------------
             // 1. Decrypt Tokens
             // -----------------------------
+
+            // Auto refresh token if needed
+            $connection = app(XeroTokenService::class)->refreshIfNeeded($connection);
+
+            // Always use fresh tokens
             $accessToken = $connection->access_token;
             $tenantId    = $connection->tenant_id;
+
+
+            // $accessToken = $connection->access_token;
+            // $tenantId    = $connection->tenant_id;
 
             if (!$accessToken) {
                 return [
@@ -237,12 +248,12 @@ class XeroEmployeeService
             // dd($response->body());
 
             // Token expired
-            if ($response->status() === 401) {
-                return [
-                    'status' => false,
-                    'message' => 'Token expired. Refresh token required.',
-                ];
-            }
+            // if ($response->status() === 401) {
+            //     return [
+            //         'status' => false,
+            //         'message' => 'Token expired. Refresh token required.',
+            //     ];
+            // }
 
             $json = $response->json();
             // dd($json);
