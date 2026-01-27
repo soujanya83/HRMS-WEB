@@ -69,7 +69,7 @@ class XeroEmployeeService
 
             // Auto refresh token if needed
             $connection = app(XeroTokenService::class)->refreshIfNeeded($connection);
-            $connection->refresh(); // ✅ Database se latest data load karo
+        $connection = $connection->fresh();
 
 
             // Always use fresh tokens
