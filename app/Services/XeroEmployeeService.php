@@ -99,7 +99,7 @@ class XeroEmployeeService
         $requiredFields = [
             'first_name' => $employee->first_name,
             'last_name' => $employee->last_name,
-            'email' => $employee->email,
+            'email' => $employee->personal_email,
             'dob' => $employee->dob,
             'joining_date' => $employee->joining_date,
         ];
