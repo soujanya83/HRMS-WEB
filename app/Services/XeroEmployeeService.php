@@ -64,15 +64,13 @@ class XeroEmployeeService
         return $check;
     }
 
-    public function createNewEmployeeInXero($employee,  $connection)
-    {
-        try {
-            // -----------------------------
-            // 1. Decrypt Tokens
-            // -----------------------------
-
-            // Auto refresh token if needed
-            Log::info('Before refresh', [
+ public function createNewEmployeeInXero($employee, $connection)
+{
+    try {
+        // -----------------------------
+        // 1. Refresh Token if Needed
+        // -----------------------------
+        Log::info('Before refresh', [
             'token_last_6' => substr($connection->access_token, -6),
             'expires_at' => $connection->token_expires_at
         ]);
@@ -88,287 +86,326 @@ class XeroEmployeeService
         $accessToken = $connection->access_token;
         $tenantId = $connection->tenant_id;
 
+        if (!$accessToken) {
+            return [
+                'status' => false,
+                'message' => 'Access token missing'
+            ];
+        }
 
-            // $accessToken = $connection->access_token;
-            // $tenantId    = $connection->tenant_id;
+        // -----------------------------
+        // 2. Validate Required Fields
+        // -----------------------------
+        $requiredFields = [
+            'first_name' => $employee->first_name,
+            'last_name' => $employee->last_name,
+            'email' => $employee->email,
+            'dob' => $employee->dob,
+            'joining_date' => $employee->joining_date,
+        ];
 
-            if (!$accessToken) {
+        foreach ($requiredFields as $field => $value) {
+            if (empty($value)) {
                 return [
                     'status' => false,
-                    'message' => 'Access token missing'
+                    'message' => ucfirst(str_replace('_', ' ', $field)) . ' is required for Xero sync'
                 ];
             }
-            // -----------------------------
-            // 2. Prepare Address
-            // -----------------------------
-            $parsed = $this->parseAddress($employee->address);
-            $calendarId = $this->getPayrollCalendarId($tenantId, $accessToken, $employee);
+        }
 
-            // check employee exists on xero with e-mail or phone number
-
-            // $existingXeroEmployee = EmployeeXeroConnection::where('employee_id', $employee->id)->first();
-            // if ($existingXeroEmployee && $existingXeroEmployee->xero_employee_id) {
-            //     return [
-            //         'status' => false,
-            //         'message' => 'Employee already exists on Xero.',
-            //         'xero_employee_id' => $existingXeroEmployee->xero_employee_id
-            //     ];
-            // } else {
-            //     // proceed to check if employee exists on xero with email or phone number
-            //     $check = $this->checkEmployeesOnXero($employee);
-            //     return $check;
-            // }
-
-
-            // -----------------------------
-            // 3. Gender Mapping
-            // -----------------------------
-            $genderMap = [
-                'male' => 'M',
-                'm' => 'M',
-                'female' => 'F',
-                'f' => 'F',
-                'non-binary' => 'I',
-                'nonbinary' => 'I',
-                'nb' => 'I',
+        // -----------------------------
+        // 3. Prepare Address
+        // -----------------------------
+        $parsed = $this->parseAddress($employee->address);
+        
+        // Validate city is not empty
+        if (empty($parsed['city'])) {
+            return [
+                'status' => false,
+                'message' => 'City/Suburb is required in address'
             ];
+        }
 
-            $gender = $genderMap[strtolower($employee->gender)] ?? 'N';
+        // -----------------------------
+        // 4. Get Payroll Calendar
+        // -----------------------------
+        $calendarId = $this->getPayrollCalendarId($tenantId, $accessToken, $employee);
+        
+        if (empty($calendarId['calendar_id'])) {
+            return [
+                'status' => false,
+                'message' => 'No Payroll Calendar found. Please set up a Payroll Calendar in Xero first.'
+            ];
+        }
 
-            // -----------------------------
-            // 4. Fetch Earnings Rates Once
-            // -----------------------------
-            $earningsRates = $this->getEarningsRates($connection);
+        // -----------------------------
+        // 5. Gender Mapping
+        // -----------------------------
+        $genderMap = [
+            'male' => 'M',
+            'm' => 'M',
+            'female' => 'F',
+            'f' => 'F',
+            'non-binary' => 'I',
+            'nonbinary' => 'I',
+            'nb' => 'I',
+        ];
 
-            $firstRateId   = $earningsRates['data'][0]['earningsRateID'] ?? null;
-            $firstRateName = $earningsRates['data'][0]['name'] ?? null;
-            $getemplyeementbasisId = $employee->employment_type;
-            $getemplyeementbasisName = EmploymentType::where('id', $getemplyeementbasisId)->value('name');
-            if ($getemplyeementbasisName == 'full-time') {
-                $employmentBasis = "FULLTIME";
-            } elseif ($getemplyeementbasisName == 'Part Time') {
-                $employmentBasis = "PARTTIME";
-            } elseif ($getemplyeementbasisName == 'Casual') {
-                $employmentBasis = "CASUAL";
-            } else {
-                $employmentBasis = "FULLTIME";
-            }
+        $gender = $genderMap[strtolower($employee->gender ?? 'm')] ?? 'N';
 
-            $earningperhour = SalaryStructure::where('employee_id', $employee->id)->first();
+        // -----------------------------
+        // 6. Fetch Earnings Rates
+        // -----------------------------
+        $earningsRates = $this->getEarningsRates($connection);
 
+        $firstRateId = $earningsRates['data'][0]['earningsRateID'] ?? null;
+        
+        if (!$firstRateId) {
+            return [
+                'status' => false,
+                'message' => 'No Earnings Rate found in Xero. Please set up Earnings Rates first.'
+            ];
+        }
 
-            $payload = [
-                [
-                    "Title"      => $employee->title ?? null,
-                    "FirstName"  => $employee->first_name,
-                    "LastName"   => $employee->last_name,
-                    "Status"     => "ACTIVE",
-                    "Email"      => $employee->email,
+        // -----------------------------
+        // 7. Employment Basis Mapping
+        // -----------------------------
+        $getemplyeementbasisId = $employee->employment_type;
+        $getemplyeementbasisName = EmploymentType::where('id', $getemplyeementbasisId)->value('name');
+        
+        if ($getemplyeementbasisName == 'full-time') {
+            $employmentBasis = "FULLTIME";
+        } elseif ($getemplyeementbasisName == 'Part Time') {
+            $employmentBasis = "PARTTIME";
+        } elseif ($getemplyeementbasisName == 'Casual') {
+            $employmentBasis = "CASUAL";
+        } else {
+            $employmentBasis = "FULLTIME";
+        }
 
-                    // Use the legacy /Date() format – your working Postman example requires it
-                    "DateOfBirth" => "/Date(" . (strtotime($employee->dob) * 1000) . "+0000)/",
-                    "StartDate"   => "/Date(" . (strtotime($employee->joining_date) * 1000) . "+0000)/",
+        $earningperhour = SalaryStructure::where('employee_id', $employee->id)->first();
 
-                    "JobTitle" => $employee->job_title ?? "",
-                    "Gender"   => $gender,
+        // -----------------------------
+        // 8. Build Payload
+        // -----------------------------
+        $payload = [
+            [
+                "Title" => $employee->title ?? null,
+                "FirstName" => $employee->first_name,
+                "LastName" => $employee->last_name,
+                "Status" => "ACTIVE",
+                "Email" => $employee->email,
 
-                    "EmploymentType" => "EMPLOYEE",
-                    "IncomeType"     => "SALARYANDWAGES",
+                "DateOfBirth" => "/Date(" . (strtotime($employee->dob) * 1000) . "+0000)/",
+                "StartDate" => "/Date(" . (strtotime($employee->joining_date) * 1000) . "+0000)/",
 
-                    "OrdinaryEarningsRateID" => $firstRateId,
-                    "PayrollCalendarID"      => $calendarId['calendar_id'] ?? null, // Ensure this is a valid GUID
+                "JobTitle" => $employee->job_title ?? "",
+                "Gender" => $gender,
 
-                    "IsAuthorisedToApproveLeave"       => false,
-                    "IsAuthorisedToApproveTimesheets"  => false, // Correct field name: Timesheets (plural)
+                "EmploymentType" => "EMPLOYEE",
+                "IncomeType" => "SALARYANDWAGES",
 
-                    "HomeAddress" => [
-                        "AddressLine1" => $parsed['addressLine1'],
-                        "AddressLine2" => $parsed['addressLine2'] ?? null,
-                        "City"         => $parsed['city'],
-                        "Region"       => "NSW", // Use valid AU state: NSW, VIC, QLD, SA, WA, TAS, ACT, NT
-                        "PostalCode"   => $parsed['postalCode'] ?? "2131", // Provide real postcode if possible
-                        "Country"      => "AUSTRALIA",
-                    ],
+                "OrdinaryEarningsRateID" => $firstRateId,
+                "PayrollCalendarID" => $calendarId['calendar_id'],
 
-                    "Phone"  => $employee->phone_number,
-                    "Mobile" => $employee->phone_number,
-                    "email" => $employee->personal_email,
+                "IsAuthorisedToApproveLeave" => false,
+                "IsAuthorisedToApproveTimesheets" => false,
 
-                    "TaxDeclaration" => [
-                        "EmploymentBasis"                    => $employmentBasis,
-                        "AustralianResidentForTaxPurposes"   => true,
-                        "TaxFreeThresholdClaimed"            => true,
-                        "HasHELPDebt"                        => false,
-                        "HasSFSSDebt"                        => false,
-                        "HasStudentStartupLoan"              => false,
-                        "HasTradeSupportLoanDebt"            => false,
-                        "HasLoanOrStudentDebt"               => false,
-                        "EligibleToReceiveLeaveLoading"      => false,
-                        "ResidencyStatus"                    => "AUSTRALIANRESIDENT",
-                    ],
+                "HomeAddress" => [
+                    "AddressLine1" => $parsed['addressLine1'] ?: 'N/A',
+                    "AddressLine2" => $parsed['addressLine2'] ?? null,
+                    "City" => $parsed['city'], // ✅ Required field
+                    "Region" => $parsed['region'] ?: "NSW",
+                    "PostalCode" => $parsed['postalCode'] ?: "2000",
+                    "Country" => "AUSTRALIA",
+                ],
 
-                    "BankAccounts" => [
+                "Phone" => $employee->phone_number ?? null,
+                "Mobile" => $employee->phone_number ?? null,
+
+                "TaxDeclaration" => [
+                    "EmploymentBasis" => $employmentBasis,
+                    "AustralianResidentForTaxPurposes" => true,
+                    "TaxFreeThresholdClaimed" => true,
+                    "HasHELPDebt" => false,
+                    "HasSFSSDebt" => false,
+                    "HasStudentStartupLoan" => false,
+                    "HasTradeSupportLoanDebt" => false,
+                    "HasLoanOrStudentDebt" => false,
+                    "EligibleToReceiveLeaveLoading" => false,
+                    "ResidencyStatus" => "AUSTRALIANRESIDENT",
+                ],
+
+                "BankAccounts" => [
+                    [
+                        "StatementText" => "Weekly Pay",
+                        "AccountName" => $employee->bank_account_name ?? $employee->first_name . " " . $employee->last_name,
+                        "BSB" => $employee->bank_bsb ?? "000000",
+                        "AccountNumber" => $employee->bank_account_number ?? "000000000",
+                        "Remainder" => true
+                    ]
+                ],
+
+                "PayTemplate" => [
+                    "EarningsLines" => [
                         [
-                            "StatementText" => "Weekly Pay",
-                            "AccountName"   => $employee->bank_account_name ?? $employee->first_name . " " . $employee->last_name,
-                            "BSB"           => $employee->bank_bsb ?? "000000",
-                            "AccountNumber" => $employee->bank_account_number ?? "000000000",
-                            "Remainder"     => true
+                            "EarningsRateID" => $firstRateId,
+                            "CalculationType" => "ENTEREARNINGSRATE",
+                            "RatePerUnit" => (float) ($earningperhour->base_salary ?? 0),
+                            "NormalNumberOfUnits" => 1.00
                         ]
                     ],
-
-                    "PayTemplate" => [
-                        "EarningsLines" => [
-                            [
-                                "EarningsRateID"      => $firstRateId,
-                                "CalculationType"     => "ENTEREARNINGSRATE",
-                                "RatePerUnit"         => (float) ($earningperhour->base_salary ?? 0),
-                                "NormalNumberOfUnits" => 1.00
-                            ]
-                        ],
-                        "DeductionLines"     => [],
-                        "SuperLines"         => [],
-                        "ReimbursementLines" => [],
-                        "LeaveLines"         => []
-                    ],
-
-                    "OpeningBalances" => [
-                        "OpeningBalanceDate" => "/Date(" . (strtotime($employee->joining_date) * 1000) . "+0000)/",
-                        "EarningsLines"      => [],
-                        "PaidLeaveEarningsLines" => [],
-                        "DeductionLines"     => [],
-                        "Tax"                => 0.00,
-                        "SuperLines"         => [],
-                        "ReimbursementLines" => []
-                    ]
-                ]
-            ];
-
-
-            if ($employee->tax_file_number) {
-                $payload[0]['TaxFileNumber'] = $employee->tax_file_number;
-            }
-
-
-            // -----------------------------
-            // 6. Send to Xero
-            // -----------------------------
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $accessToken,
-                'xero-tenant-id' => $tenantId,
-                'Accept' => 'application/json',
-                'Content-Type' => 'application/json',
-            ])->post('https://api.xero.com/payroll.xro/1.0/Employees', $payload);
-            // dd($response->body());
-
-            // Token expired
-            // if ($response->status() === 401) {
-            //     return [
-            //         'status' => false,
-            //         'message' => 'Token expired. Refresh token required.',
-            //     ];
-            // }
-
-            $json = $response->json();
-            // dd($json);
-
-            // -----------------------------
-            // 7. On Success → Save Mapping
-            // -----------------------------
-            if ($response->successful()) {
-                $xeroEmployeeId = $json["Employees"][0]["EmployeeID"];
-                $PayrollCalendarID = $json["Employees"][0]["PayrollCalendarID"];
-                $OrdinaryEarningsRateID = $json['Employees'][0]['OrdinaryEarningsRateID'];
-                $EarningsRateID = $json['Employees'][0]['PayTemplate']['EarningsLines']['EarningsRateID'];
-
-                EmployeeXeroConnection::updateOrCreate(
-                    [
-                        'employee_id' => $employee->id,
-                        'xero_connection_id' => $connection->id ?? "0",
-                        'xerocalenderId' => $PayrollCalendarID,
-                        'OrdinaryEarningsRateID' => $OrdinaryEarningsRateID,
-                        'EarningsRateID' => $EarningsRateID ?? ""
-                    ],
-                    [
-                        'organization_id' => $connection->organization_id,
-                        'xero_employee_id' => $xeroEmployeeId,
-                        'is_synced' => 1,
-                        'last_synced_at' => now(),
-                        'sync_status' => 'success',
-                        'sync_error' => null,
-                        'xero_data' => json_encode($json),
-                    ]
-                );
-
-                return [
-                    'status' => true,
-                    'message' => 'Employee synced successfully!',
-                    'xero_employee_id' => $xeroEmployeeId
-                ];
-            }
-
-            // -----------------------------
-            // 8. Save failure logs
-            // -----------------------------
-            EmployeeXeroConnection::updateOrCreate(
-                [
-                    'employee_id' => $employee->id,
-                    'xero_connection_id' => $connection->id,
+                    "DeductionLines" => [],
+                    "SuperLines" => [],
+                    "ReimbursementLines" => [],
+                    "LeaveLines" => []
                 ],
+
+                "OpeningBalances" => [
+                    "OpeningBalanceDate" => "/Date(" . (strtotime($employee->joining_date) * 1000) . "+0000)/",
+                    "EarningsLines" => [],
+                    "PaidLeaveEarningsLines" => [],
+                    "DeductionLines" => [],
+                    "Tax" => 0.00,
+                    "SuperLines" => [],
+                    "ReimbursementLines" => []
+                ]
+            ]
+        ];
+
+        // Add Tax File Number if exists
+        if ($employee->tax_file_number) {
+            $payload[0]['TaxFileNumber'] = $employee->tax_file_number;
+        }
+
+        // -----------------------------
+        // 9. Send to Xero
+        // -----------------------------
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer ' . $accessToken,
+            'xero-tenant-id' => $tenantId,
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/json',
+        ])->post('https://api.xero.com/payroll.xro/1.0/Employees', $payload);
+
+        $json = $response->json();
+
+        // Log response for debugging
+        Log::info('Xero Employee Sync Response', [
+            'status' => $response->status(),
+            'response' => $json
+        ]);
+
+        // -----------------------------
+        // 10. Handle Success
+        // -----------------------------
+        if ($response->successful()) {
+            $xeroEmployeeId = $json["Employees"][0]["EmployeeID"];
+            $PayrollCalendarID = $json["Employees"][0]["PayrollCalendarID"];
+            $OrdinaryEarningsRateID = $json['Employees'][0]['OrdinaryEarningsRateID'];
+            $EarningsRateID = $json['Employees'][0]['PayTemplate']['EarningsLines'][0]['EarningsRateID'] ?? null;
+
+            EmployeeXeroConnection::updateOrCreate(
+                ['employee_id' => $employee->id],
                 [
+                    'xero_connection_id' => $connection->id,
                     'organization_id' => $connection->organization_id,
-                    'is_synced' => 0,
-                    'sync_status' => 'failed',
-                    'sync_error' => json_encode($json),
+                    'xero_employee_id' => $xeroEmployeeId,
+                    'xerocalenderId' => $PayrollCalendarID,
+                    'OrdinaryEarningsRateID' => $OrdinaryEarningsRateID,
+                    'EarningsRateID' => $EarningsRateID ?? "",
+                    'is_synced' => 1,
                     'last_synced_at' => now(),
+                    'sync_status' => 'success',
+                    'sync_error' => null,
+                    'xero_data' => json_encode($json),
                 ]
             );
 
             return [
-                'status' => false,
-                'message' => 'Sync failed',
-                'response' => $json
-            ];
-        } catch (\Exception $e) {
-            return [
-                'status' => false,
-                'message' => 'Exception during sync',
-                'error' => $e->getMessage()
+                'status' => true,
+                'message' => 'Employee synced successfully!',
+                'xero_employee_id' => $xeroEmployeeId
             ];
         }
-    }
 
-
-    public function parseAddress($fullAddress)
-    {
-        // Split by comma
-        $parts = array_map('trim', explode(',', $fullAddress));
-
-        $addressLine1 = $parts[0] ?? null;
-        $city         = $parts[1] ?? null;
-
-        // Check if state + postal exist in 3rd part (AU / US format)
-        $region = null;
-        $postal = null;
-
-        if (!empty($parts[2])) {
-            // Try extracting "VIC 3000" or "NSW 2000"
-            if (preg_match('/([A-Za-z]{2,4})\s*(\d{4,6})?/', $parts[2], $matches)) {
-                $region = $matches[1] ?? null;
-                $postal = $matches[2] ?? null;
-            }
-        }
-
-        $country = $parts[3] ?? ($parts[2] ?? "Australia");
+        // -----------------------------
+        // 11. Handle Failure
+        // -----------------------------
+        EmployeeXeroConnection::updateOrCreate(
+            ['employee_id' => $employee->id],
+            [
+                'xero_connection_id' => $connection->id,
+                'organization_id' => $connection->organization_id,
+                'is_synced' => 0,
+                'sync_status' => 'failed',
+                'sync_error' => json_encode($json),
+                'last_synced_at' => now(),
+            ]
+        );
 
         return [
-            "addressLine1" => $addressLine1,
-            "city"         => $city,
-            "region"       => $region,
-            "postalCode"   => $postal,
-            "country"      => $country
+            'status' => false,
+            'message' => 'Sync failed',
+            'response' => $json
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('Xero Employee Sync Exception', [
+            'employee_id' => $employee->id ?? null,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return [
+            'status' => false,
+            'message' => 'Exception during sync',
+            'error' => $e->getMessage()
         ];
     }
+}
+
+public function parseAddress($fullAddress)
+{
+    if (empty($fullAddress)) {
+        return [
+            "addressLine1" => "N/A",
+            "addressLine2" => null,
+            "city" => "Sydney",  // ✅ Default city
+            "region" => "NSW",
+            "postalCode" => "2000",
+            "country" => "Australia"
+        ];
+    }
+
+    // Split by comma
+    $parts = array_map('trim', explode(',', $fullAddress));
+
+    $addressLine1 = $parts[0] ?? 'N/A';
+    $city = $parts[1] ?? 'Sydney';  // ✅ Default if missing
+
+    // Extract state + postal code
+    $region = null;
+    $postal = null;
+
+    if (!empty($parts[2])) {
+        if (preg_match('/([A-Za-z]{2,4})\s*(\d{4,6})?/', $parts[2], $matches)) {
+            $region = $matches[1] ?? null;
+            $postal = $matches[2] ?? null;
+        }
+    }
+
+    $country = $parts[3] ?? "Australia";
+
+    return [
+        "addressLine1" => $addressLine1,
+        "addressLine2" => $parts[2] ?? null,
+        "city" => $city,  // ✅ Always has value
+        "region" => $region ?: "NSW",
+        "postalCode" => $postal ?: "2000",
+        "country" => $country
+    ];
+}
 
     public function getEarningsRates(XeroConnection $connection)
     {
