@@ -100,7 +100,7 @@ class XeroEmployeeService
             'first_name' => $employee->first_name,
             'last_name' => $employee->last_name,
             'email' => $employee->personal_email,
-            'dob' => $employee->dob,
+            'dob' => $employee->date_of_birth,
             'joining_date' => $employee->joining_date,
         ];
 
