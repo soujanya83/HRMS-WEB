@@ -190,16 +190,16 @@ class XeroEmployeeService
         // -----------------------------
         $payload = [
             [
-                "Title" => $employee->title ?? null,
+                "Title" => $employee->employee_code ?? null,
                 "FirstName" => $employee->first_name,
                 "LastName" => $employee->last_name,
                 "Status" => "ACTIVE",
-                "Email" => $employee->email,
+                "Email" => $employee->personal_email,
 
-                "DateOfBirth" => "/Date(" . (strtotime($employee->dob) * 1000) . "+0000)/",
+                "DateOfBirth" => "/Date(" . (strtotime($employee->date_of_birth) * 1000) . "+0000)/",
                 "StartDate" => "/Date(" . (strtotime($employee->joining_date) * 1000) . "+0000)/",
 
-                "JobTitle" => $employee->job_title ?? "",
+                "JobTitle" => $employee->designation->title ?? "",
                 "Gender" => $gender,
 
                 "EmploymentType" => "EMPLOYEE",
