@@ -823,22 +823,29 @@ private function getPhoneNumber(array $xeroEmployee): ?string
 
 private function convertXeroDate($xeroDate): ?string
 {
-    if (!$xeroDate) {
+    if (!$xeroDate || !is_string($xeroDate)) {
         return null;
     }
 
-    // Handle both timestamp and date string formats
+    // Handle Xero format: "/Date(962841600000+0000)/"
+    if (preg_match('/\/Date\((\d+)(\+0000)?\)\//', $xeroDate, $matches)) {
+        $timestamp = (int) $matches[1]; // Extract timestamp (962841600000)
+        return date('Y-m-d', $timestamp / 1000); // Convert to MySQL DATE format
+    }
+
+    // Fallback for other formats (ISO, plain timestamp)
     if (is_numeric($xeroDate)) {
         return date('Y-m-d', $xeroDate / 1000);
     }
-    
-    // Handle ISO date format
+
+    // Handle plain ISO date format
     if (preg_match('/^\d{4}-\d{2}-\d{2}/', $xeroDate)) {
         return $xeroDate;
     }
-    
+
     return null;
 }
+
 
     
 }
