@@ -847,5 +847,54 @@ private function convertXeroDate($xeroDate): ?string
 }
 
 
+//-------------------------------------------------------------------------------------------------
+//timesheet Push Service
+
+
+    public function pushTimesheets($connection, $from, $to)
+    {
+        // Auto refresh
+        $connection = app(XeroTokenService::class)->refreshIfNeeded($connection);
+
+        $employees = EmployeeXeroConnection::where('organization_id', 15)
+            ->where('is_synced', 1)
+            ->get();
+
+        $created = 0;
+
+        foreach ($employees as $employee) {
+
+            $payload = [
+                "EmployeeID" => $employee->xero_employee_id,
+                "StartDate" => $from,
+                "EndDate" => $to,
+                "TimesheetLines" => [
+                    [
+                        "EarningsRateID" => $employee->OrdinaryEarningsRateID,
+                        "NumberOfUnits" => 8
+                    ]
+                ]
+            ];
+
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $connection->access_token,
+                'Xero-Tenant-Id'=> $connection->tenant_id,
+                'Accept' => 'application/json',
+            ])->post('https://api.xero.com/payroll.xro/1.0/Timesheets', [
+                'Timesheets' => [$payload]
+            ]);
+
+            if ($response->successful()) {
+                $created++;
+            }
+        }
+
+        return [
+            'employees' => count($employees),
+            'timesheets_created' => $created
+        ];
+    }
+
+
     
 }
