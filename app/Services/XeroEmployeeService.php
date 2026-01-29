@@ -642,5 +642,25 @@ public function parseAddress($fullAddress)
             'link' => $connection,
             'code' => 'MatchedLinked',
         ];
+
     }
+
+    public function fetchEmployeesFromXero($connection)
+    {
+        // Auto refresh token if needed
+        $connection = app(XeroTokenService::class)->refreshIfNeeded($connection);
+
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer ' . $connection->access_token,
+            'Xero-Tenant-Id' => $connection->tenant_id,
+            'Accept' => 'application/json',
+        ])->get('https://api.xero.com/payroll.xro/1.0/Employees');
+
+        if (!$response->successful()) {
+            throw new \Exception($response->body());
+        }
+
+        return $response->json()['Employees'] ?? [];
+    }
+    
 }

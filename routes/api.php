@@ -582,6 +582,7 @@ Route::prefix('v1')->group(function () {
         });
 
         Route::post('/xero/sync-employee', [XeroEmployeeController::class, 'sync']);
+        Route::get('/xero/employees',[XeroEmployeeController::class, 'getAllFromXero']);
     
            
     

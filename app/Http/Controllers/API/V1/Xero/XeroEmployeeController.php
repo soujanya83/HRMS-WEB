@@ -41,4 +41,35 @@ class XeroEmployeeController extends Controller
     }
 
 
+    public function getAllFromXero(Request $request)
+        {
+            try {
+
+                $organizationId = $request->user()->organization_id;
+
+                $connection = XeroConnection::where('organization_id', $organizationId)
+                    ->where('is_active', 1)
+                    ->firstOrFail();
+
+                $service = new \App\Services\XeroEmployeeService();
+
+                $employees = $service->fetchEmployeesFromXero($connection);
+
+                return response()->json([
+                    'status' => true,
+                    'data' => $employees
+                ]);
+
+            } catch (\Exception $e) {
+
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Failed to fetch employees',
+                    'error' => $e->getMessage()
+                ], 500);
+            }
+        }
+
+
+
 }

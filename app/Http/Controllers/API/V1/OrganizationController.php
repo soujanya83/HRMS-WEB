@@ -19,7 +19,8 @@ class OrganizationController extends Controller
     public function index()
     {
         try {
-            $organizations = Organization::all();
+            $user = Auth::user();
+            $organizations = Organization::where('user_id', $user->id)->get();
             return response()->json([
                 'success' => true,
                 'data' => $organizations,
@@ -113,7 +114,9 @@ class OrganizationController extends Controller
     public function store(StoreOrganizationRequest $request)
     {
         try {
-            $organization = Organization::create($request->validated());
+            $user = Auth::user();
+            $data = array_merge($request->validated(), ['user_id' => $user->id]);
+            $organization = Organization::create($data);
             return response()->json([
                 'success' => true,
                 'data' => $organization,
