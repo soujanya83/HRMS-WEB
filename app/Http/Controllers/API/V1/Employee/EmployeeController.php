@@ -162,7 +162,7 @@ class EmployeeController extends Controller
                 $createdUser = $user;
             } else {
                 // Create new user
-                $rawPassword = Str::random(10);
+                $rawPassword = 12345678; // Or generate a random password if preferred
                 $createdUser = User::create([
                     'name' => $validated['first_name'] . ' ' . $validated['last_name'],
                     'email' => $validated['personal_email'],

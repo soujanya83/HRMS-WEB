@@ -21,6 +21,8 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use App\Models\User;
+use Illuminate\Support\Facades\Hash;
 
 
 class XeroEmployeeService
@@ -645,22 +647,120 @@ public function parseAddress($fullAddress)
 
     }
 
-    public function fetchEmployeesFromXero($connection)
-    {
-        // Auto refresh token if needed
-        $connection = app(XeroTokenService::class)->refreshIfNeeded($connection);
+   public function fetchEmployeesFromXero($connection)
+{
+    // Auto refresh token
+    $connection = app(\App\Services\Xero\XeroTokenService::class)
+        ->refreshIfNeeded($connection);
 
-        $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . $connection->access_token,
-            'Xero-Tenant-Id' => $connection->tenant_id,
-            'Accept' => 'application/json',
-        ])->get('https://api.xero.com/payroll.xro/1.0/Employees');
+    $response = Http::withHeaders([
+        'Authorization' => 'Bearer ' . $connection->access_token,
+        'Xero-Tenant-Id' => $connection->tenant_id,
+        'Accept' => 'application/json',
+    ])->get('https://api.xero.com/payroll.xro/1.0/Employees');
 
-        if (!$response->successful()) {
-            throw new \Exception($response->body());
+    if (!$response->successful()) {
+        throw new \Exception($response->body());
+    }
+
+    $xeroEmployees = $response->json()['Employees'] ?? [];
+
+    $created = 0;
+    $skipped = 0;
+
+    foreach ($xeroEmployees as $xeroEmployee) {
+
+        // -----------------------
+        // Already synced?
+        // -----------------------
+        $exists = EmployeeXeroConnection::where(
+            'xero_employee_id',
+            $xeroEmployee['EmployeeID']
+        )->exists();
+
+        if ($exists) {
+            $skipped++;
+            continue;
         }
 
-        return $response->json()['Employees'] ?? [];
+        // -----------------------
+        // Create User
+        // -----------------------
+        $rawPassword = '12345678';
+
+        $email = $xeroEmployee['Email'] ?? Str::uuid() . '@xero.local';
+
+        $user = User::create([
+            'name' => trim(($xeroEmployee['FirstName'] ?? '') . ' ' . ($xeroEmployee['LastName'] ?? '')),
+            'email' => $email,
+            'password' => Hash::make($rawPassword),
+        ]);
+
+        // -----------------------
+        // Convert Xero Date
+        // -----------------------
+        $dob = $this->convertXeroDate($xeroEmployee['DateOfBirth'] ?? null);
+        $startDate = $this->convertXeroDate($xeroEmployee['StartDate'] ?? null);
+
+        // -----------------------
+        // Gender mapping
+        // -----------------------
+        $genderMap = ['M' => 'Male', 'F' => 'Female', 'I' => 'other'];
+        $gender = $genderMap[$xeroEmployee['Gender'] ?? ''] ?? null;
+
+        // -----------------------
+        // Create Employee
+        // -----------------------
+        $employee = Employee::create([
+            'organization_id' => 15,
+            'user_id' => $user->id,
+            'first_name' => $xeroEmployee['FirstName'] ?? '',
+            'last_name' => $xeroEmployee['LastName'] ?? '',
+            'personal_email' => $email,
+            'date_of_birth' => $dob,
+            'joining_date' => $startDate,
+            'gender' => $gender,
+            'phone_number' => $xeroEmployee['Mobile'] ?? $xeroEmployee['Phone'] ?? null,
+            'status' => 'active',
+        ]);
+
+        // -----------------------
+        // Mapping table
+        // -----------------------
+        EmployeeXeroConnection::create([
+            'organization_id' => $connection->organization_id,
+            'employee_id' => $employee->id,
+            'xero_connection_id' => $connection->id,
+            'xero_employee_id' => $xeroEmployee['EmployeeID'],
+            'xerocalenderId' => $xeroEmployee['PayrollCalendarID'] ?? null,
+            'OrdinaryEarningsRateID' => $xeroEmployee['OrdinaryEarningsRateID'] ?? null,
+            'is_synced' => true,
+            'sync_status' => 'success',
+            'xero_status' => $xeroEmployee['Status'] ?? null,
+            'xero_data' => $xeroEmployee,
+            'last_synced_at' => now(),
+        ]);
+
+        $created++;
     }
+
+    return [
+        'total_xero' => count($xeroEmployees),
+        'created' => $created,
+        'skipped' => $skipped
+    ];
+}
+
+private function convertXeroDate($xeroDate)
+{
+    if (!$xeroDate) return null;
+
+    preg_match('/\d+/', $xeroDate, $matches);
+
+    return isset($matches[0])
+        ? date('Y-m-d', $matches[0] / 1000)
+        : null;
+}
+
     
 }
