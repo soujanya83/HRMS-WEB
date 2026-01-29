@@ -47,7 +47,7 @@ class XeroEmployeeController extends Controller
 
                 $organizationId = $request->user()->organization_id;
 
-                $connection = XeroConnection::where('organization_id', $organizationId)
+                $connection = XeroConnection::where('organization_id', 15)
                     ->where('is_active', 1)
                     ->firstOrFail();
 
