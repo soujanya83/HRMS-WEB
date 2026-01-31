@@ -77,10 +77,11 @@ class OrganizationAttendanceRuleController extends Controller
 
 
             // $employee = Employee::where('user_id', $user_id)->first();
+            $rules = OrganizationAttendanceRule::where('organization_id', $organizationId)->get();
 
-            // if (!$employee) {
-            //     return response()->json(['status' => false, 'message' => 'Employee not found.'], 404);
-            // }
+            if ($rules->isNotEmpty()) {
+                return response()->json(['status' => false, 'message' => 'Organization already has an attendance rule.'], 404);
+            }
 
             $validated = $request->validate([
                 'shift_name' => 'nullable|string|max:50',
