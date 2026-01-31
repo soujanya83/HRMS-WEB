@@ -46,6 +46,27 @@ class OrganizationAttendanceRuleController extends Controller
     }
 }
 
+    // Fetch rules by organization id
+    public function getByOrganization($organization_id)
+    {
+        try {
+            $rules = OrganizationAttendanceRule::where('organization_id', $organization_id)->get();
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Attendance Rules Retrieved Successfully',
+                'data' => $rules
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Something went wrong.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
    public function store(Request $request)
     {
         try {
