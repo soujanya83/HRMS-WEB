@@ -98,4 +98,10 @@ class User extends Authenticatable
             ->get();
     }
 
+    public function organizations()
+{
+    return DB::table('user_organization_roles')
+        ->where('user_id', $this->id);
+}
+
 }

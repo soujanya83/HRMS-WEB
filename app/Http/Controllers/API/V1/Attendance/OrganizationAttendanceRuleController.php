@@ -50,11 +50,16 @@ class OrganizationAttendanceRuleController extends Controller
     {
         try {
             $user_id = Auth::id();
-            $employee = Employee::where('user_id', $user_id)->first();
+            $user = Auth::user();
+            $organizationId = $user->organizations()->first()?->id;
+            // $organizationIds = $user->organizations->pluck('id');
 
-            if (!$employee) {
-                return response()->json(['status' => false, 'message' => 'Employee not found.'], 404);
-            }
+
+            // $employee = Employee::where('user_id', $user_id)->first();
+
+            // if (!$employee) {
+            //     return response()->json(['status' => false, 'message' => 'Employee not found.'], 404);
+            // }
 
             $validated = $request->validate([
                 'shift_name' => 'nullable|string|max:50',
@@ -80,8 +85,8 @@ class OrganizationAttendanceRuleController extends Controller
                 'is_active' => 'boolean',
             ]);
 
-            $validated['organization_id'] = $employee->organization_id;
-            $validated['created_by'] = $employee->id;
+            $validated['organization_id'] = $organizationId;
+            $validated['created_by'] = $user_id;
 
             $rule = OrganizationAttendanceRule::create($validated);
 
