@@ -252,96 +252,130 @@ class AttendanceController extends Controller
     /**
      * Store a newly created attendance record.
      */
-    public function store(Request $request, TimesheetController $Timesheet): JsonResponse
-    {
-        try {
-            // Validate input first (timezone handling comes after)
-            $validated = $request->validate([
-                'employee_id' => ['required', 'exists:employees,id'],
-                'date' => ['required', 'date'], // Remove unique from here; handle manually after TZ adjustment
-                'check_in' => ['nullable', 'date_format:H:i'],
-                'check_out' => ['nullable', 'date_format:H:i', 'after_or_equal:check_in'],
-                'status' => ['required', Rule::in(['present', 'absent', 'late', 'half_day', 'on_leave'])],
-                'notes' => ['nullable', 'string', 'max:500'],
-            ]);
-            // dd($validated);
+   public function store(Request $request, TimesheetController $Timesheet): JsonResponse
+{
+    try {
+        /* ============================
+         | 1. VALIDATION
+         ============================ */
+        $validated = $request->validate([
+            'employee_id' => ['required', 'exists:employees,id'],
+            'date'        => ['required', 'date'],
+            'check_in'    => ['nullable', 'date_format:H:i'],
+            'check_out'   => ['nullable', 'date_format:H:i', 'after_or_equal:check_in'],
+            'status'      => ['required', Rule::in(['present', 'absent', 'late', 'half_day', 'on_leave'])],
+            'notes'       => ['nullable', 'string', 'max:500'],
+        ]);
 
-            // Fetch employee and determine timezone (Australian default if not set)
-            $employee = Employee::with('organization:id,timezone') // Assuming Employee has belongsTo Organization
-                ->findOrFail($validated['employee_id']);
+        /* ============================
+         | 2. EMPLOYEE + TIMEZONE
+         ============================ */
+        $employee = Employee::with('organization:id,timezone')
+            ->findOrFail($validated['employee_id']);
 
-            $timezone = $employee->organization->timezone ?? 'Australia/Sydney'; // Default to Sydney (AEST/AEDT)
+        $timezone = $employee->organization->timezone ?? 'Australia/Sydney';
 
+        /* ============================
+         | 3. DATE (TIMEZONE SAFE)
+         ============================ */
+        $dateInTz = Carbon::parse($validated['date'])
+            ->setTimezone($timezone)
+            ->format('Y-m-d');
 
+        /* ============================
+         | 4. CHECK-IN / CHECK-OUT
+         ============================ */
+        $checkInTime = $validated['check_in']
+            ? Carbon::createFromFormat('Y-m-d H:i', "{$dateInTz} {$validated['check_in']}")
+                ->setTimezone($timezone)
+                ->format('H:i')
+            : null;
 
-            // Parse and adjust date/time to Australian timezone
-            $dateInTz = Carbon::parse($validated['date'])->setTimezone($timezone)->format('Y-m-d');
+        $checkOutTime = $validated['check_out']
+            ? Carbon::createFromFormat('Y-m-d H:i', "{$dateInTz} {$validated['check_out']}")
+                ->setTimezone($timezone)
+                ->format('H:i')
+            : null;
 
+        /* ============================
+         | 5. LATE CALCULATION (SAFE)
+         ============================ */
+        $is_late = 0;
 
-            // Adjust times if provided (combine with date, apply TZ, extract H:i)
-            $checkInTime = $validated['check_in']
-                ? Carbon::createFromFormat('Y-m-d H:i', "{$dateInTz} {$validated['check_in']}")->setTimezone($timezone)->format('H:i')
+        if ($checkInTime) {
+
+            // Attendance rule (optional)
+            $attendanceRule = OrganizationAttendanceRule::where(
+                'organization_id',
+                $employee->organization_id
+            )->first();
+
+            // Roster (optional)
+            $rosterShiftIds = Roster::where('employee_id', $employee->id)
+                ->whereDate('roster_date', $dateInTz) // ⚠ timezone safe
+                ->pluck('shift_id');
+
+            // Shift (optional)
+            $shift = $rosterShiftIds->isNotEmpty()
+                ? Shift::whereIn('id', $rosterShiftIds)->first()
                 : null;
-            // dd($checkInTime);
 
-            $is_late = 0;
-            if ($checkInTime) {
-                // dd('here');
-                $attendanceRule = OrganizationAttendanceRule::where('organization_id', $employee->organization_id)
-                    ->first();
-                $roster = Roster::where('employee_id', $employee->id)->whereDate('roster_date', $request->date)->pluck('shift_id');
-                $shift = Shift::whereIn('id', $roster)->first();
-                // dd($shift);
+            // Run late logic ONLY if everything exists
+            if ($attendanceRule && $shift && $shift->start_time) {
 
-                if ($attendanceRule) {
-                    // dd($shift->check_in);
-                    $scheduledCheckIn = Carbon::createFromFormat('H:i:s', $shift->start_time);
-                    // dd('scheduledCheckIn: ' . $scheduledCheckIn);
-                    $actualCheckIn = Carbon::createFromFormat('H:i', $checkInTime);
-                    // dd(['scheduledCheckIn: ' => $scheduledCheckIn, 'actualCheckIn: ' => $actualCheckIn]);
-                    $lateGraceMinutes = $attendanceRule->late_grace_minutes ?? 0;
-                    $gracePeriodEnd = $scheduledCheckIn->copy()->addMinutes($lateGraceMinutes);
-                    // dd('attendance rule found');
-                    if ($actualCheckIn->greaterThan($gracePeriodEnd)) {
-                        $is_late = 1; // Mark as late
-                    }
+                $scheduledCheckIn = Carbon::parse($shift->start_time);
+                $actualCheckIn    = Carbon::parse($checkInTime);
+
+                $graceMinutes = $attendanceRule->late_grace_minutes ?? 0;
+                $graceEnd     = $scheduledCheckIn->copy()->addMinutes($graceMinutes);
+
+                if ($actualCheckIn->greaterThan($graceEnd)) {
+                    $is_late = 1;
                 }
             }
+        }
 
+        /* ============================
+         | 6. TOTAL WORK HOURS
+         ============================ */
+        $totalWorkingHours = ($checkInTime && $checkOutTime)
+            ? Carbon::parse($checkInTime)
+                ->diffInMinutes(Carbon::parse($checkOutTime)) / 60
+            : 0;
 
-            $checkOutTime = $validated['check_out']
-                ? Carbon::createFromFormat('Y-m-d H:i', "{$dateInTz} {$validated['check_out']}")->setTimezone($timezone)->format('H:i')
-                : null;
+        /* ============================
+         | 7. DUPLICATE CHECK
+         ============================ */
+        $alreadyExists = Attendance::where('employee_id', $employee->id)
+            ->where('date', $dateInTz)
+            ->exists();
 
-            $totalWorkingHours = $checkOutTime && $checkInTime
-                ? Carbon::createFromFormat('H:i', $checkInTime)->diffInMinutes(Carbon::createFromFormat('H:i', $checkOutTime)) / 60
-                : 0;
+        if ($alreadyExists) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Attendance already exists for this employee on this date.',
+            ], 422);
+        }
 
-            // Prepare data with TZ-adjusted values
-            $attendanceData = [
-                'employee_id' => $validated['employee_id'],
-                'date' => $dateInTz,
-                'check_in' => $checkInTime,
-                'check_out' => $checkOutTime,
-                'total_work_hours' => $totalWorkingHours,
-                'status' => $validated['status'],
-                'notes' => $validated['notes'] ?? null,
-                'is_late' => $is_late,
-            ];
+        /* ============================
+         | 8. SAVE ATTENDANCE
+         ============================ */
+        $attendance = Attendance::create([
+            'employee_id'       => $employee->id,
+            'date'              => $dateInTz,
+            'check_in'          => $checkInTime,
+            'check_out'         => $checkOutTime,
+            'total_work_hours'  => $totalWorkingHours,
+            'status'            => $validated['status'],
+            'notes'             => $validated['notes'] ?? null,
+            'is_late'           => $is_late,
+        ]);
 
-            // Manual uniqueness check (after TZ adjustment)
-            $exists = Attendance::where('employee_id', $validated['employee_id'])
-                ->where('date', $dateInTz)
-                ->exists();
-
-            if ($exists) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Attendance record already exists for this employee on the specified date.',
-                ], 422);
-            }
-
-            $attendance = \App\Models\Employee\Attendance::create($attendanceData);
+        /* ============================
+         | 9. PAYROLL / XERO (FUTURE)
+         ============================ */
+        // Payroll + Xero sync intentionally commented
+        // Logic can be safely enabled later
 
             // $payroll = Payrolls::where('employee_id', $employee->id)
             //     ->where('payment_status', 'processed')
@@ -361,34 +395,38 @@ class AttendanceController extends Controller
             // }
 
 
-            return response()->json([
-                'success' => true,
-                'data' => $attendance->load('employee:id,first_name,last_name,personal_email'),
-                'message' => 'Attendance recorded successfully.'
-            ], 201);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            // Validation errors are already handled by Laravel (422 response), but we can customize if needed
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation failed.',
-                'errors' => $e->errors()
-            ], 422);
-        } catch (\Illuminate\Database\QueryException $e) {
-            // Database-specific errors (e.g., unique constraint violation beyond validation)
-            return response()->json([
-                'success' => false,
-                'message' => 'Database error occurred while creating attendance.',
-                'errors' => ['database' => $e->getMessage()] // Avoid exposing full error in production
-            ], 500);
-        } catch (\Exception $e) {
-    return response()->json([
-        'success' => false,
-        'message' => $e->getMessage(),
-        'file' => $e->getFile(),
-        'line' => $e->getLine(),
-    ], 500);
-}
+        /* ============================
+         | 10. RESPONSE
+         ============================ */
+        return response()->json([
+            'success' => true,
+            'message' => 'Attendance recorded successfully.',
+            'data'    => $attendance->load('employee:id,first_name,last_name,personal_email'),
+        ], 201);
+
+    } catch (\Illuminate\Validation\ValidationException $e) {
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Validation failed.',
+            'errors'  => $e->errors(),
+        ], 422);
+
+    } catch (\Exception $e) {
+
+        Log::error('Attendance Store Error', [
+            'error' => $e->getMessage(),
+            'file'  => $e->getFile(),
+            'line'  => $e->getLine(),
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Something went wrong while recording attendance.',
+        ], 500);
     }
+}
+
 
 
     public function shouldTriggerPayroll($employee, $lastPayroll)
