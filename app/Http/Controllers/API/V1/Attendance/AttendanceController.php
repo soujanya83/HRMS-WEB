@@ -394,16 +394,16 @@ class AttendanceController extends Controller
         /* ============================
          | 8. SAVE ATTENDANCE
          ============================ */
-        $attendance = Attendance::create([
-            'employee_id'       => $employee->id,
-            'date'              => $dateInTz,
-            'check_in'          => $checkInTime,
-            'check_out'         => $checkOutTime,
-            'total_work_hours'  => $totalWorkingHours,
-            'status'            => $validated['status'],
-            'notes'             => $validated['notes'] ?? null,
-            'is_late'           => $is_late,
-        ]);
+        // $attendance = Attendance::create([
+        //     'employee_id'       => $employee->id,
+        //     'date'              => $dateInTz,
+        //     'check_in'          => $checkInTime,
+        //     'check_out'         => $checkOutTime,
+        //     'total_work_hours'  => $totalWorkingHours,
+        //     'status'            => $validated['status'],
+        //     'notes'             => $validated['notes'] ?? null,
+        //     'is_late'           => $is_late,
+        // ]);
 
         /* ============================
          | 9. PAYROLL / XERO (FUTURE)
