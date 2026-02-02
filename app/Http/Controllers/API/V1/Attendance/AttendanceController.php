@@ -352,14 +352,17 @@ class AttendanceController extends Controller
     ->where('date', $dateInTz)
     ->first();
 
-        if ($checkOutTime && !$attendance->check_in) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Check-in is required before check-out.',
-            ], 422);
-        }
+    
 
      if (!$attendance) {
+
+      // ❌ Check-out without check-in
+    if ($checkOutTime) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Check-in is required before check-out.',
+        ], 422);
+    }
 
     $attendance = Attendance::create([
         'employee_id'      => $employee->id,
@@ -381,6 +384,13 @@ class AttendanceController extends Controller
                 'message' => 'Check-out already recorded for today.',
             ], 422);
         }
+
+          if (!$attendance->check_in) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Invalid attendance state. Check-in missing.',
+        ], 422);
+    }
 
         // Update check-out
         $attendance->update([
