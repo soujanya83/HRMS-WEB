@@ -343,22 +343,22 @@ class AttendanceController extends Controller
 
             $attendance = \App\Models\Employee\Attendance::create($attendanceData);
 
-            $payroll = Payrolls::where('employee_id', $employee->id)
-                ->where('payment_status', 'processed')
-                ->orderBy('to_date', 'desc')
-                ->first();
+            // $payroll = Payrolls::where('employee_id', $employee->id)
+            //     ->where('payment_status', 'processed')
+            //     ->orderBy('to_date', 'desc')
+            //     ->first();
 
-            if ($payroll) {
-                $lastPayrollDate = Carbon::parse($payroll->to_date);
-            } else {
-                // No payroll ever → use JOINING DATE
-                $lastPayrollDate = Carbon::parse($employee->joining_date);
-            }
+            // if ($payroll) {
+            //     $lastPayrollDate = Carbon::parse($payroll->to_date);
+            // } else {
+            //     // No payroll ever → use JOINING DATE
+            //     $lastPayrollDate = Carbon::parse($employee->joining_date);
+            // }
 
-            if ($this->shouldTriggerPayroll($employee, $lastPayrollDate)) {
-                // ⚠ FIXED: You were incorrectly passing $employee → must pass $attendance
-                $this->syncTimesheetToXero($attendance, $lastPayrollDate);
-            }
+            // if ($this->shouldTriggerPayroll($employee, $lastPayrollDate)) {
+            //     // ⚠ FIXED: You were incorrectly passing $employee → must pass $attendance
+            //     $this->syncTimesheetToXero($attendance, $lastPayrollDate);
+            // }
 
 
             return response()->json([
