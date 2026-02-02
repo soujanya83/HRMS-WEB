@@ -363,6 +363,7 @@ class AttendanceController extends Controller
 
     $attendance = Attendance::create([
         'employee_id'      => $employee->id,
+        'organization_id'  => $employee->organization_id,
         'date'             => $dateInTz,
         'check_in'         => $checkInTime,
         'status'           => $validated['status'],
