@@ -30,83 +30,141 @@ class AttendanceController extends Controller
 {
 
 
-    public function index(Request $request): JsonResponse
+    // public function index(Request $request): JsonResponse
+    // {
+    //     $employee = Employee::where('user_id', Auth::id())->firstOrFail();
+    //     $organizationId = $employee->organization_id;
+
+    //     $query = Attendance::query()
+    //         ->with([
+    //             'employee:id,first_name,last_name,personal_email,phone_number,organization_id,department_id',
+    //             'employee.department:id,name',
+    //             'employee.organization:id,name',
+    //             'employee.organization.attendanceRule:id,organization_id,shift_name,check_in,check_out,break_start,break_end,late_grace_minutes,half_day_after_minutes'
+    //         ])
+    //         ->whereHas('employee', function ($q) use ($organizationId) {
+    //             $q->where('organization_id', $organizationId);
+    //         })
+    //         ->orderBy('date', 'desc')
+    //         ->orderBy('employee_id');
+
+    //     // ---------------------------------------------------------
+    //     // 1️⃣ Filter by STATUS
+    //     // ---------------------------------------------------------
+    //     if ($request->filled('status') && $request->status !== "all") {
+    //         $query->where('status', $request->status);
+    //     }
+
+    //     // ---------------------------------------------------------
+    //     // 2️⃣ Filter by EMPLOYEE NAME (supports partial search)
+    //     // ---------------------------------------------------------
+    //     if ($request->filled('employee_name')) {
+    //         $name = $request->employee_name;
+
+    //         $query->whereHas('employee', function ($q) use ($name) {
+    //             $q->where('first_name', 'LIKE', "%{$name}%")
+    //                 ->orWhere('last_name', 'LIKE', "%{$name}%");
+    //         });
+    //     }
+
+    //     // ---------------------------------------------------------
+    //     // 3️⃣ Filter by DEPARTMENT
+    //     // ---------------------------------------------------------
+    //     if ($request->filled('department') && $request->department !== "all") {
+    //         $query->whereHas('employee', function ($q) use ($request) {
+    //             $q->where('department_id', $request->department);
+    //         });
+    //     }
+
+    //     // ---------------------------------------------------------
+    //     // 4️⃣ Filter by DATE RANGE
+    //     // ---------------------------------------------------------
+
+
+
+    //     if ($request->filled('startDate')) {
+    //         $startDate = $this->parseDMY($request->startDate);
+    //         if (!$startDate) {
+    //             return response()->json(['success' => false, 'message' => 'Invalid start date. Format: d-m-Y'], 422);
+    //         }
+    //         $query->whereDate('date', '>=', $startDate);
+    //     }
+
+    //     if ($request->filled('endDate')) {
+    //         $endDate = $this->parseDMY($request->endDate);
+    //         if (!$endDate) {
+    //             return response()->json(['success' => false, 'message' => 'Invalid end date. Format: d-m-Y'], 422);
+    //         }
+    //         $query->whereDate('date', '<=', $endDate);
+    //     }
+
+    //     // ---------------------------------------------------------
+    //     // Final Pagination
+    //     // ---------------------------------------------------------
+    //     $attendances = $query->paginate(20);
+
+    //     return response()->json([
+    //         'success' => true,
+    //         'data' => $attendances,
+    //         'message' => 'Attendances retrieved successfully.'
+    //     ]);
+    // }
+
+    public function index(Request $request)
     {
-        $employee = Employee::where('user_id', Auth::id())->firstOrFail();
-        $organizationId = $employee->organization_id;
+        $query = Attendance::with('employee');
 
-        $query = Attendance::query()
-            ->with([
-                'employee:id,first_name,last_name,personal_email,phone_number,organization_id,department_id',
-                'employee.department:id,name',
-                'employee.organization:id,name',
-                'employee.organization.attendanceRule:id,organization_id,shift_name,check_in,check_out,break_start,break_end,late_grace_minutes,half_day_after_minutes'
-            ])
-            ->whereHas('employee', function ($q) use ($organizationId) {
-                $q->where('organization_id', $organizationId);
-            })
-            ->orderBy('date', 'desc')
-            ->orderBy('employee_id');
+        /**
+         * Filter by organization
+         */
+        if ($request->filled('organization_id')) {
+            $query->where('organization_id', $request->organization_id);
+        }
 
-        // ---------------------------------------------------------
-        // 1️⃣ Filter by STATUS
-        // ---------------------------------------------------------
-        if ($request->filled('status') && $request->status !== "all") {
+        /**
+         * Filter by employee
+         */
+        if ($request->filled('employee_id')) {
+            $query->where('employee_id', $request->employee_id);
+        }
+
+        /**
+         * Filter by status
+         */
+        if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
 
-        // ---------------------------------------------------------
-        // 2️⃣ Filter by EMPLOYEE NAME (supports partial search)
-        // ---------------------------------------------------------
-        if ($request->filled('employee_name')) {
-            $name = $request->employee_name;
-
-            $query->whereHas('employee', function ($q) use ($name) {
-                $q->where('first_name', 'LIKE', "%{$name}%")
-                    ->orWhere('last_name', 'LIKE', "%{$name}%");
-            });
+        /**
+         * Filter by single date
+         */
+        if ($request->filled('date')) {
+            $query->whereDate('date', $request->date);
         }
 
-        // ---------------------------------------------------------
-        // 3️⃣ Filter by DEPARTMENT
-        // ---------------------------------------------------------
-        if ($request->filled('department') && $request->department !== "all") {
-            $query->whereHas('employee', function ($q) use ($request) {
-                $q->where('department_id', $request->department);
-            });
+        /**
+         * Filter by date range
+         */
+        if ($request->filled('from_date') && $request->filled('to_date')) {
+            $query->whereBetween('date', [
+                $request->from_date,
+                $request->to_date
+            ]);
         }
 
-        // ---------------------------------------------------------
-        // 4️⃣ Filter by DATE RANGE
-        // ---------------------------------------------------------
+        /**
+         * Sorting latest first
+         */
+        $query->orderBy('date', 'desc');
 
-
-
-        if ($request->filled('startDate')) {
-            $startDate = $this->parseDMY($request->startDate);
-            if (!$startDate) {
-                return response()->json(['success' => false, 'message' => 'Invalid start date. Format: d-m-Y'], 422);
-            }
-            $query->whereDate('date', '>=', $startDate);
-        }
-
-        if ($request->filled('endDate')) {
-            $endDate = $this->parseDMY($request->endDate);
-            if (!$endDate) {
-                return response()->json(['success' => false, 'message' => 'Invalid end date. Format: d-m-Y'], 422);
-            }
-            $query->whereDate('date', '<=', $endDate);
-        }
-
-        // ---------------------------------------------------------
-        // Final Pagination
-        // ---------------------------------------------------------
+        /**
+         * Pagination
+         */
         $attendances = $query->paginate(20);
 
         return response()->json([
             'success' => true,
-            'data' => $attendances,
-            'message' => 'Attendances retrieved successfully.'
+            'data' => $attendances
         ]);
     }
 
