@@ -72,11 +72,10 @@ class OrganizationAttendanceRuleController extends Controller
         try {
             $user_id = Auth::id();
             $user = Auth::user();
-            $organizationId = $user->organizations()->first()?->id;
+            $organizationId = $user->organizations->first()?->id;
             // $organizationIds = $user->organizations->pluck('id');
 
 
-            // $employee = Employee::where('user_id', $user_id)->first();
             $rules = OrganizationAttendanceRule::where('organization_id', $organizationId)->get();
 
             if ($rules->isNotEmpty()) {
