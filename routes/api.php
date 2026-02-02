@@ -133,6 +133,7 @@ Route::prefix('v1')->group(function () {
 
         Route::apiResource('organization-leaves', OrganizationLeaveController::class);
         Route::apiResource('organization-attendance-rule', OrganizationAttendanceRuleController::class);
+        Route::get('getbyorganization/{id}', [OrganizationAttendanceRuleController::class, 'getByOrganization']);
         Route::apiResource('organization-holiday', HolidayController::class);
         Route::apiResource('organization-project', ProjectController::class);
         Route::apiResource('organization/employee/tasks', TaskController::class);
