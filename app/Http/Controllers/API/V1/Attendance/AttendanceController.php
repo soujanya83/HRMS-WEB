@@ -396,10 +396,8 @@ class AttendanceController extends Controller
         /* ============================
          | 6. TOTAL WORK HOURS
          ============================ */
-        $totalWorkingHours = ($checkInTime && $checkOutTime)
-            ? Carbon::parse($checkInTime)
-                ->diffInMinutes(Carbon::parse($checkOutTime)) / 60
-            : 0;
+
+   
 
         /* ============================
          | 7. DUPLICATE CHECK
@@ -409,6 +407,15 @@ class AttendanceController extends Controller
        $attendance = Attendance::where('employee_id', $employee->id)
     ->where('date', $dateInTz)
     ->first();
+
+    if ($attendance) {
+    $checkInTime = $checkInTime ?? $attendance->check_in;
+        }   
+
+         $totalWorkingHours = ($checkInTime && $checkOutTime)
+            ? Carbon::parse($checkInTime)
+                ->diffInMinutes(Carbon::parse($checkOutTime)) / 60
+            : 0;
 
     
 
