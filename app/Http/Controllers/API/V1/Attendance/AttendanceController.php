@@ -1680,4 +1680,81 @@ class AttendanceController extends Controller
             ], 500);
         }
     }
+
+    public function getByEmployeeAndDate(Request $request): JsonResponse
+{
+    try {
+        /* ============================
+         | 1. VALIDATION
+         ============================ */
+        $validated = $request->validate([
+            'employee_id' => ['required', 'exists:employees,id'],
+            'date'        => ['required', 'date'],
+        ]);
+
+        /* ============================
+         | 2. EMPLOYEE + TIMEZONE
+         ============================ */
+        $employee = Employee::with('organization:id,timezone')
+            ->findOrFail($validated['employee_id']);
+
+        $timezone = $employee->organization->timezone ?? 'Australia/Sydney';
+
+        /* ============================
+         | 3. DATE (TIMEZONE SAFE)
+         ============================ */
+        $dateInTz = Carbon::parse($validated['date'])
+            ->setTimezone($timezone)
+            ->format('Y-m-d');
+
+        /* ============================
+         | 4. FETCH ATTENDANCE
+         ============================ */
+        $attendance = Attendance::where('employee_id', $employee->id)
+            ->where('date', $dateInTz)
+            ->with([
+                'employee:id,first_name,last_name,personal_email'
+            ])
+            ->first();
+
+        /* ============================
+         | 5. RESPONSE
+         ============================ */
+        if (!$attendance) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Attendance not found for this employee on the given date.',
+                'data'    => null,
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Attendance fetched successfully.',
+            'data'    => $attendance,
+        ], 200);
+
+    } catch (\Illuminate\Validation\ValidationException $e) {
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Validation failed.',
+            'errors'  => $e->errors(),
+        ], 422);
+
+    } catch (\Exception $e) {
+
+        \Log::error('Get Attendance Error', [
+            'error' => $e->getMessage(),
+            'file'  => $e->getFile(),
+            'line'  => $e->getLine(),
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Something went wrong while fetching attendance.',
+        ], 500);
+    }
+}
+
 }

@@ -333,6 +333,9 @@ Route::prefix('v1')->group(function () {
             Route::get('/work-on-holiday', [AttendanceController::class, 'ShowHolidayRequests']);
             Route::post('/approve-work-on-holiday', [AttendanceController::class, 'ApproveWorkOnHoliday']);
             Route::get('/employee-attendance-summary', [AttendanceController::class, 'EmployeeAttendanceSummary']);
+
+            Route::get('attendance/by-employee-date', [AttendanceController::class,'getByEmployeeAndDate']);
+
         });
 
         Route::prefix('leave')->group(function () {
