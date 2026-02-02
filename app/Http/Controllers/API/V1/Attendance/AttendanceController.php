@@ -381,14 +381,13 @@ class AttendanceController extends Controller
                 'errors' => ['database' => $e->getMessage()] // Avoid exposing full error in production
             ], 500);
         } catch (\Exception $e) {
-            // Catch-all for unexpected errors
-            // In production, log the full error: \Log::error('Attendance store error: ' . $e->getMessage(), ['request' => $request->all()]);
-            return response()->json([
-                'success' => false,
-                'message' => 'An unexpected error occurred while recording attendance.',
-                'errors' => [] // Keep generic; log details separately
-            ], 500);
-        }
+    return response()->json([
+        'success' => false,
+        'message' => $e->getMessage(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine(),
+    ], 500);
+}
     }
 
 
