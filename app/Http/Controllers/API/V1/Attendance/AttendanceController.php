@@ -346,16 +346,50 @@ class AttendanceController extends Controller
         /* ============================
          | 7. DUPLICATE CHECK
          ============================ */
-        $alreadyExists = Attendance::where('employee_id', $employee->id)
-            ->where('date', $dateInTz)
-            ->exists();
 
-        if ($alreadyExists) {
+        
+       $attendance = Attendance::where('employee_id', $employee->id)
+    ->where('date', $dateInTz)
+    ->first();
+
+        if ($checkOutTime && !$attendance->check_in) {
             return response()->json([
                 'success' => false,
-                'message' => 'Attendance already exists for this employee on this date.',
+                'message' => 'Check-in is required before check-out.',
             ], 422);
         }
+
+     if (!$attendance) {
+
+    $attendance = Attendance::create([
+        'employee_id'      => $employee->id,
+        'date'             => $dateInTz,
+        'check_in'         => $checkInTime,
+        'status'           => $validated['status'],
+        'notes'            => $validated['notes'] ?? null,
+        'is_late'          => $is_late,
+        'total_work_hours' => 0,
+    ]);
+
+    } else {
+
+        // Prevent double check-out
+        if ($attendance->check_out) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Check-out already recorded for today.',
+            ], 422);
+        }
+
+        // Update check-out
+        $attendance->update([
+            'check_out'         => $checkOutTime,
+            'total_work_hours'  => $totalWorkingHours,
+            'notes'             => $validated['notes'] ?? $attendance->notes,
+        ]);
+    }
+
+
 
         /* ============================
          | 8. SAVE ATTENDANCE
