@@ -41,4 +41,65 @@ class XeroEmployeeController extends Controller
     }
 
 
+    public function getAllFromXero(Request $request)
+        {
+            try {
+
+                $organizationId = $request->user()->organization_id;
+
+                $connection = XeroConnection::where('organization_id', 15)
+                    ->where('is_active', 1)
+                    ->firstOrFail();
+
+                $service = new \App\Services\XeroEmployeeService();
+
+                $employees = $service->fetchEmployeesFromXero($connection);
+
+                return response()->json([
+                    'status' => true,
+                    'data' => $employees
+                ]);
+
+            } catch (\Exception $e) {
+
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Failed to fetch employees',
+                    'error' => $e->getMessage()
+                ], 500);
+            }
+        }
+
+//--------------------------------------------------------------------------------------------------------
+//timesheet api controllers - 
+
+public function push(Request $request)
+    {
+        try {
+
+            $organizationId = $request->user()->organization_id;
+
+            $connection = XeroConnection::where('organization_id', 15)
+                ->where('is_active', 1)
+                ->firstOrFail();
+
+            $service = new \App\Services\XeroEmployeeService();
+
+            $result = $service->pushTimesheets($connection, $request->date_from, $request->date_to);
+
+            return response()->json([
+                'status' => true,
+                'data' => $result
+            ]);
+
+        } catch (\Exception $e) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Timesheet sync failed',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
 }

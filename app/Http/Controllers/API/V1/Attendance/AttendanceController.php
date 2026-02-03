@@ -30,83 +30,141 @@ class AttendanceController extends Controller
 {
 
 
-    public function index(Request $request): JsonResponse
+    // public function index(Request $request): JsonResponse
+    // {
+    //     $employee = Employee::where('user_id', Auth::id())->firstOrFail();
+    //     $organizationId = $employee->organization_id;
+
+    //     $query = Attendance::query()
+    //         ->with([
+    //             'employee:id,first_name,last_name,personal_email,phone_number,organization_id,department_id',
+    //             'employee.department:id,name',
+    //             'employee.organization:id,name',
+    //             'employee.organization.attendanceRule:id,organization_id,shift_name,check_in,check_out,break_start,break_end,late_grace_minutes,half_day_after_minutes'
+    //         ])
+    //         ->whereHas('employee', function ($q) use ($organizationId) {
+    //             $q->where('organization_id', $organizationId);
+    //         })
+    //         ->orderBy('date', 'desc')
+    //         ->orderBy('employee_id');
+
+    //     // ---------------------------------------------------------
+    //     // 1️⃣ Filter by STATUS
+    //     // ---------------------------------------------------------
+    //     if ($request->filled('status') && $request->status !== "all") {
+    //         $query->where('status', $request->status);
+    //     }
+
+    //     // ---------------------------------------------------------
+    //     // 2️⃣ Filter by EMPLOYEE NAME (supports partial search)
+    //     // ---------------------------------------------------------
+    //     if ($request->filled('employee_name')) {
+    //         $name = $request->employee_name;
+
+    //         $query->whereHas('employee', function ($q) use ($name) {
+    //             $q->where('first_name', 'LIKE', "%{$name}%")
+    //                 ->orWhere('last_name', 'LIKE', "%{$name}%");
+    //         });
+    //     }
+
+    //     // ---------------------------------------------------------
+    //     // 3️⃣ Filter by DEPARTMENT
+    //     // ---------------------------------------------------------
+    //     if ($request->filled('department') && $request->department !== "all") {
+    //         $query->whereHas('employee', function ($q) use ($request) {
+    //             $q->where('department_id', $request->department);
+    //         });
+    //     }
+
+    //     // ---------------------------------------------------------
+    //     // 4️⃣ Filter by DATE RANGE
+    //     // ---------------------------------------------------------
+
+
+
+    //     if ($request->filled('startDate')) {
+    //         $startDate = $this->parseDMY($request->startDate);
+    //         if (!$startDate) {
+    //             return response()->json(['success' => false, 'message' => 'Invalid start date. Format: d-m-Y'], 422);
+    //         }
+    //         $query->whereDate('date', '>=', $startDate);
+    //     }
+
+    //     if ($request->filled('endDate')) {
+    //         $endDate = $this->parseDMY($request->endDate);
+    //         if (!$endDate) {
+    //             return response()->json(['success' => false, 'message' => 'Invalid end date. Format: d-m-Y'], 422);
+    //         }
+    //         $query->whereDate('date', '<=', $endDate);
+    //     }
+
+    //     // ---------------------------------------------------------
+    //     // Final Pagination
+    //     // ---------------------------------------------------------
+    //     $attendances = $query->paginate(20);
+
+    //     return response()->json([
+    //         'success' => true,
+    //         'data' => $attendances,
+    //         'message' => 'Attendances retrieved successfully.'
+    //     ]);
+    // }
+
+    public function index(Request $request)
     {
-        $employee = Employee::where('user_id', Auth::id())->firstOrFail();
-        $organizationId = $employee->organization_id;
+        $query = Attendance::with('employee');
 
-        $query = Attendance::query()
-            ->with([
-                'employee:id,first_name,last_name,personal_email,phone_number,organization_id,department_id',
-                'employee.department:id,name',
-                'employee.organization:id,name',
-                'employee.organization.attendanceRule:id,organization_id,shift_name,check_in,check_out,break_start,break_end,late_grace_minutes,half_day_after_minutes'
-            ])
-            ->whereHas('employee', function ($q) use ($organizationId) {
-                $q->where('organization_id', $organizationId);
-            })
-            ->orderBy('date', 'desc')
-            ->orderBy('employee_id');
+        /**
+         * Filter by organization
+         */
+        if ($request->filled('organization_id')) {
+            $query->where('organization_id', $request->organization_id);
+        }
 
-        // ---------------------------------------------------------
-        // 1️⃣ Filter by STATUS
-        // ---------------------------------------------------------
-        if ($request->filled('status') && $request->status !== "all") {
+        /**
+         * Filter by employee
+         */
+        if ($request->filled('employee_id')) {
+            $query->where('employee_id', $request->employee_id);
+        }
+
+        /**
+         * Filter by status
+         */
+        if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
 
-        // ---------------------------------------------------------
-        // 2️⃣ Filter by EMPLOYEE NAME (supports partial search)
-        // ---------------------------------------------------------
-        if ($request->filled('employee_name')) {
-            $name = $request->employee_name;
-
-            $query->whereHas('employee', function ($q) use ($name) {
-                $q->where('first_name', 'LIKE', "%{$name}%")
-                    ->orWhere('last_name', 'LIKE', "%{$name}%");
-            });
+        /**
+         * Filter by single date
+         */
+        if ($request->filled('date')) {
+            $query->whereDate('date', $request->date);
         }
 
-        // ---------------------------------------------------------
-        // 3️⃣ Filter by DEPARTMENT
-        // ---------------------------------------------------------
-        if ($request->filled('department') && $request->department !== "all") {
-            $query->whereHas('employee', function ($q) use ($request) {
-                $q->where('department_id', $request->department);
-            });
+        /**
+         * Filter by date range
+         */
+        if ($request->filled('from_date') && $request->filled('to_date')) {
+            $query->whereBetween('date', [
+                $request->from_date,
+                $request->to_date
+            ]);
         }
 
-        // ---------------------------------------------------------
-        // 4️⃣ Filter by DATE RANGE
-        // ---------------------------------------------------------
+        /**
+         * Sorting latest first
+         */
+        $query->orderBy('date', 'desc');
 
-
-
-        if ($request->filled('startDate')) {
-            $startDate = $this->parseDMY($request->startDate);
-            if (!$startDate) {
-                return response()->json(['success' => false, 'message' => 'Invalid start date. Format: d-m-Y'], 422);
-            }
-            $query->whereDate('date', '>=', $startDate);
-        }
-
-        if ($request->filled('endDate')) {
-            $endDate = $this->parseDMY($request->endDate);
-            if (!$endDate) {
-                return response()->json(['success' => false, 'message' => 'Invalid end date. Format: d-m-Y'], 422);
-            }
-            $query->whereDate('date', '<=', $endDate);
-        }
-
-        // ---------------------------------------------------------
-        // Final Pagination
-        // ---------------------------------------------------------
+        /**
+         * Pagination
+         */
         $attendances = $query->paginate(20);
 
         return response()->json([
             'success' => true,
-            'data' => $attendances,
-            'message' => 'Attendances retrieved successfully.'
+            'data' => $attendances
         ]);
     }
 
@@ -252,144 +310,233 @@ class AttendanceController extends Controller
     /**
      * Store a newly created attendance record.
      */
-    public function store(Request $request, TimesheetController $Timesheet): JsonResponse
-    {
-        try {
-            // Validate input first (timezone handling comes after)
-            $validated = $request->validate([
-                'employee_id' => ['required', 'exists:employees,id'],
-                'date' => ['required', 'date'], // Remove unique from here; handle manually after TZ adjustment
-                'check_in' => ['nullable', 'date_format:H:i'],
-                'check_out' => ['nullable', 'date_format:H:i', 'after_or_equal:check_in'],
-                'status' => ['required', Rule::in(['present', 'absent', 'late', 'half_day', 'on_leave'])],
-                'notes' => ['nullable', 'string', 'max:500'],
-            ]);
-            // dd($validated);
+   public function store(Request $request, TimesheetController $Timesheet): JsonResponse
+{
+    try {
+        /* ============================
+         | 1. VALIDATION
+         ============================ */
+        $validated = $request->validate([
+            'employee_id' => ['required', 'exists:employees,id'],
+            'date'        => ['required', 'date'],
+            'check_in'    => ['nullable', 'date_format:H:i'],
+            'check_out'   => ['nullable', 'date_format:H:i', 'after_or_equal:check_in'],
+            'status'      => ['required', Rule::in(['present', 'absent', 'late', 'half_day', 'on_leave'])],
+            'notes'       => ['nullable', 'string', 'max:500'],
+        ]);
 
-            // Fetch employee and determine timezone (Australian default if not set)
-            $employee = Employee::with('organization:id,timezone') // Assuming Employee has belongsTo Organization
-                ->findOrFail($validated['employee_id']);
+        /* ============================
+         | 2. EMPLOYEE + TIMEZONE
+         ============================ */
+        $employee = Employee::with('organization:id,timezone')
+            ->findOrFail($validated['employee_id']);
 
-            $timezone = $employee->organization->timezone ?? 'Australia/Sydney'; // Default to Sydney (AEST/AEDT)
+        $timezone = $employee->organization->timezone ?? 'Australia/Sydney';
 
+        /* ============================
+         | 3. DATE (TIMEZONE SAFE)
+         ============================ */
+        $dateInTz = Carbon::parse($validated['date'])
+            ->setTimezone($timezone)
+            ->format('Y-m-d');
 
+        /* ============================
+         | 4. CHECK-IN / CHECK-OUT
+         ============================ */
+        $checkInTime = $validated['check_in']
+            ? Carbon::createFromFormat('Y-m-d H:i', "{$dateInTz} {$validated['check_in']}")
+                ->setTimezone($timezone)
+                ->format('H:i')
+            : null;
 
-            // Parse and adjust date/time to Australian timezone
-            $dateInTz = Carbon::parse($validated['date'])->setTimezone($timezone)->format('Y-m-d');
+        $checkOutTime = $validated['check_out']
+            ? Carbon::createFromFormat('Y-m-d H:i', "{$dateInTz} {$validated['check_out']}")
+                ->setTimezone($timezone)
+                ->format('H:i')
+            : null;
 
+        /* ============================
+         | 5. LATE CALCULATION (SAFE)
+         ============================ */
+        $is_late = 0;
 
-            // Adjust times if provided (combine with date, apply TZ, extract H:i)
-            $checkInTime = $validated['check_in']
-                ? Carbon::createFromFormat('Y-m-d H:i', "{$dateInTz} {$validated['check_in']}")->setTimezone($timezone)->format('H:i')
+        if ($checkInTime) {
+
+            // Attendance rule (optional)
+            $attendanceRule = OrganizationAttendanceRule::where(
+                'organization_id',
+                $employee->organization_id
+            )->first();
+
+            // Roster (optional)
+            $rosterShiftIds = Roster::where('employee_id', $employee->id)
+                ->whereDate('roster_date', $dateInTz) // ⚠ timezone safe
+                ->pluck('shift_id');
+
+            // Shift (optional)
+            $shift = $rosterShiftIds->isNotEmpty()
+                ? Shift::whereIn('id', $rosterShiftIds)->first()
                 : null;
-            // dd($checkInTime);
 
-            $is_late = 0;
-            if ($checkInTime) {
-                // dd('here');
-                $attendanceRule = OrganizationAttendanceRule::where('organization_id', $employee->organization_id)
-                    ->first();
-                $roster = Roster::where('employee_id', $employee->id)->whereDate('roster_date', $request->date)->pluck('shift_id');
-                $shift = Shift::whereIn('id', $roster)->first();
-                // dd($shift);
+            // Run late logic ONLY if everything exists
+            if ($attendanceRule && $shift && $shift->start_time) {
 
-                if ($attendanceRule) {
-                    // dd($shift->check_in);
-                    $scheduledCheckIn = Carbon::createFromFormat('H:i:s', $shift->start_time);
-                    // dd('scheduledCheckIn: ' . $scheduledCheckIn);
-                    $actualCheckIn = Carbon::createFromFormat('H:i', $checkInTime);
-                    // dd(['scheduledCheckIn: ' => $scheduledCheckIn, 'actualCheckIn: ' => $actualCheckIn]);
-                    $lateGraceMinutes = $attendanceRule->late_grace_minutes ?? 0;
-                    $gracePeriodEnd = $scheduledCheckIn->copy()->addMinutes($lateGraceMinutes);
-                    // dd('attendance rule found');
-                    if ($actualCheckIn->greaterThan($gracePeriodEnd)) {
-                        $is_late = 1; // Mark as late
-                    }
+                $scheduledCheckIn = Carbon::parse($shift->start_time);
+                $actualCheckIn    = Carbon::parse($checkInTime);
+
+                $graceMinutes = $attendanceRule->late_grace_minutes ?? 0;
+                $graceEnd     = $scheduledCheckIn->copy()->addMinutes($graceMinutes);
+
+                if ($actualCheckIn->greaterThan($graceEnd)) {
+                    $is_late = 1;
                 }
             }
-
-
-            $checkOutTime = $validated['check_out']
-                ? Carbon::createFromFormat('Y-m-d H:i', "{$dateInTz} {$validated['check_out']}")->setTimezone($timezone)->format('H:i')
-                : null;
-
-            $totalWorkingHours = $checkOutTime && $checkInTime
-                ? Carbon::createFromFormat('H:i', $checkInTime)->diffInMinutes(Carbon::createFromFormat('H:i', $checkOutTime)) / 60
-                : 0;
-
-            // Prepare data with TZ-adjusted values
-            $attendanceData = [
-                'employee_id' => $validated['employee_id'],
-                'date' => $dateInTz,
-                'check_in' => $checkInTime,
-                'check_out' => $checkOutTime,
-                'total_work_hours' => $totalWorkingHours,
-                'status' => $validated['status'],
-                'notes' => $validated['notes'] ?? null,
-                'is_late' => $is_late,
-            ];
-
-            // Manual uniqueness check (after TZ adjustment)
-            $exists = Attendance::where('employee_id', $validated['employee_id'])
-                ->where('date', $dateInTz)
-                ->exists();
-
-            if ($exists) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Attendance record already exists for this employee on the specified date.',
-                ], 422);
-            }
-
-            $attendance = \App\Models\Employee\Attendance::create($attendanceData);
-
-            $payroll = Payrolls::where('employee_id', $employee->id)
-                ->where('payment_status', 'processed')
-                ->orderBy('to_date', 'desc')
-                ->first();
-
-            if ($payroll) {
-                $lastPayrollDate = Carbon::parse($payroll->to_date);
-            } else {
-                // No payroll ever → use JOINING DATE
-                $lastPayrollDate = Carbon::parse($employee->joining_date);
-            }
-
-            if ($this->shouldTriggerPayroll($employee, $lastPayrollDate)) {
-                // ⚠ FIXED: You were incorrectly passing $employee → must pass $attendance
-                $this->syncTimesheetToXero($attendance, $lastPayrollDate);
-            }
-
-
-            return response()->json([
-                'success' => true,
-                'data' => $attendance->load('employee:id,first_name,last_name,personal_email'),
-                'message' => 'Attendance recorded successfully.'
-            ], 201);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            // Validation errors are already handled by Laravel (422 response), but we can customize if needed
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation failed.',
-                'errors' => $e->errors()
-            ], 422);
-        } catch (\Illuminate\Database\QueryException $e) {
-            // Database-specific errors (e.g., unique constraint violation beyond validation)
-            return response()->json([
-                'success' => false,
-                'message' => 'Database error occurred while creating attendance.',
-                'errors' => ['database' => $e->getMessage()] // Avoid exposing full error in production
-            ], 500);
-        } catch (\Exception $e) {
-            // Catch-all for unexpected errors
-            // In production, log the full error: \Log::error('Attendance store error: ' . $e->getMessage(), ['request' => $request->all()]);
-            return response()->json([
-                'success' => false,
-                'message' => 'An unexpected error occurred while recording attendance.',
-                'errors' => [] // Keep generic; log details separately
-            ], 500);
         }
+
+        /* ============================
+         | 6. TOTAL WORK HOURS
+         ============================ */
+
+   
+
+        /* ============================
+         | 7. DUPLICATE CHECK
+         ============================ */
+
+        
+       $attendance = Attendance::where('employee_id', $employee->id)
+    ->where('date', $dateInTz)
+    ->first();
+
+    if ($attendance) {
+    $checkInTime = $checkInTime ?? $attendance->check_in;
+        }   
+
+         $totalWorkingHours = ($checkInTime && $checkOutTime)
+            ? Carbon::parse($checkInTime)
+                ->diffInMinutes(Carbon::parse($checkOutTime)) / 60
+            : 0;
+
+    
+
+     if (!$attendance) {
+
+      // ❌ Check-out without check-in
+    if ($checkOutTime) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Check-in is required before check-out.',
+        ], 422);
     }
+
+    $attendance = Attendance::create([
+        'employee_id'      => $employee->id,
+        'organization_id'  => $employee->organization_id,
+        'date'             => $dateInTz,
+        'check_in'         => $checkInTime,
+        'status'           => $validated['status'],
+        'notes'            => $validated['notes'] ?? null,
+        'is_late'          => $is_late,
+        'total_work_hours' => 0,
+    ]);
+
+    } else {
+
+        // Prevent double check-out
+        if ($attendance->check_out) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Check-out already recorded for today.',
+            ], 422);
+        }
+
+          if (!$attendance->check_in) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Invalid attendance state. Check-in missing.',
+        ], 422);
+    }
+
+        // Update check-out
+        $attendance->update([
+            'check_out'         => $checkOutTime,
+            'total_work_hours'  => $totalWorkingHours,
+            'notes'             => $validated['notes'] ?? $attendance->notes,
+        ]);
+    }
+
+
+
+        /* ============================
+         | 8. SAVE ATTENDANCE
+         ============================ */
+        // $attendance = Attendance::create([
+        //     'employee_id'       => $employee->id,
+        //     'date'              => $dateInTz,
+        //     'check_in'          => $checkInTime,
+        //     'check_out'         => $checkOutTime,
+        //     'total_work_hours'  => $totalWorkingHours,
+        //     'status'            => $validated['status'],
+        //     'notes'             => $validated['notes'] ?? null,
+        //     'is_late'           => $is_late,
+        // ]);
+
+        /* ============================
+         | 9. PAYROLL / XERO (FUTURE)
+         ============================ */
+        // Payroll + Xero sync intentionally commented
+        // Logic can be safely enabled later
+
+            // $payroll = Payrolls::where('employee_id', $employee->id)
+            //     ->where('payment_status', 'processed')
+            //     ->orderBy('to_date', 'desc')
+            //     ->first();
+
+            // if ($payroll) {
+            //     $lastPayrollDate = Carbon::parse($payroll->to_date);
+            // } else {
+            //     // No payroll ever → use JOINING DATE
+            //     $lastPayrollDate = Carbon::parse($employee->joining_date);
+            // }
+
+            // if ($this->shouldTriggerPayroll($employee, $lastPayrollDate)) {
+            //     // ⚠ FIXED: You were incorrectly passing $employee → must pass $attendance
+            //     $this->syncTimesheetToXero($attendance, $lastPayrollDate);
+            // }
+
+
+        /* ============================
+         | 10. RESPONSE
+         ============================ */
+        return response()->json([
+            'success' => true,
+            'message' => 'Attendance recorded successfully.',
+            'data'    => $attendance->load('employee:id,first_name,last_name,personal_email'),
+        ], 201);
+
+    } catch (\Illuminate\Validation\ValidationException $e) {
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Validation failed.',
+            'errors'  => $e->errors(),
+        ], 422);
+
+    } catch (\Exception $e) {
+
+        Log::error('Attendance Store Error', [
+            'error' => $e->getMessage(),
+            'file'  => $e->getFile(),
+            'line'  => $e->getLine(),
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Something went wrong while recording attendance.',
+        ], 500);
+    }
+}
+
 
 
     public function shouldTriggerPayroll($employee, $lastPayroll)
@@ -1533,4 +1680,81 @@ class AttendanceController extends Controller
             ], 500);
         }
     }
+
+    public function getByEmployeeAndDate(Request $request): JsonResponse
+{
+    try {
+        /* ============================
+         | 1. VALIDATION
+         ============================ */
+        $validated = $request->validate([
+            'employee_id' => ['required', 'exists:employees,id'],
+            'date'        => ['required', 'date'],
+        ]);
+
+        /* ============================
+         | 2. EMPLOYEE + TIMEZONE
+         ============================ */
+        $employee = Employee::with('organization:id,timezone')
+            ->findOrFail($validated['employee_id']);
+
+        $timezone = $employee->organization->timezone ?? 'Australia/Sydney';
+
+        /* ============================
+         | 3. DATE (TIMEZONE SAFE)
+         ============================ */
+        $dateInTz = Carbon::parse($validated['date'])
+            ->setTimezone($timezone)
+            ->format('Y-m-d');
+
+        /* ============================
+         | 4. FETCH ATTENDANCE
+         ============================ */
+        $attendance = Attendance::where('employee_id', $employee->id)
+            ->where('date', $dateInTz)
+            ->with([
+                'employee:id,first_name,last_name,personal_email'
+            ])
+            ->first();
+
+        /* ============================
+         | 5. RESPONSE
+         ============================ */
+        if (!$attendance) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Attendance not found for this employee on the given date.',
+                'data'    => null,
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Attendance fetched successfully.',
+            'data'    => $attendance,
+        ], 200);
+
+    } catch (\Illuminate\Validation\ValidationException $e) {
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Validation failed.',
+            'errors'  => $e->errors(),
+        ], 422);
+
+    } catch (\Exception $e) {
+
+        \Log::error('Get Attendance Error', [
+            'error' => $e->getMessage(),
+            'file'  => $e->getFile(),
+            'line'  => $e->getLine(),
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Something went wrong while fetching attendance.',
+        ], 500);
+    }
+}
+
 }

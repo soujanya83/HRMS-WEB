@@ -46,14 +46,40 @@ class OrganizationAttendanceRuleController extends Controller
     }
 }
 
+    // Fetch rules by organization id
+    public function getByOrganization($organization_id)
+    {
+        try {
+            $rules = OrganizationAttendanceRule::where('organization_id', $organization_id)->get();
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Attendance Rules Retrieved Successfully',
+                'data' => $rules
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Something went wrong.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
    public function store(Request $request)
     {
         try {
             $user_id = Auth::id();
-            $employee = Employee::where('user_id', $user_id)->first();
+            $user = Auth::user();
+            $organizationId = $user->organizations->first()?->id;
+            // $organizationIds = $user->organizations->pluck('id');
 
-            if (!$employee) {
-                return response()->json(['status' => false, 'message' => 'Employee not found.'], 404);
+
+            $rules = OrganizationAttendanceRule::where('organization_id', $organizationId)->get();
+
+            if ($rules->isNotEmpty()) {
+                return response()->json(['status' => false, 'message' => 'Organization already has an attendance rule.'], 404);
             }
 
             $validated = $request->validate([
@@ -80,8 +106,8 @@ class OrganizationAttendanceRuleController extends Controller
                 'is_active' => 'boolean',
             ]);
 
-            $validated['organization_id'] = $employee->organization_id;
-            $validated['created_by'] = $employee->id;
+            $validated['organization_id'] = $organizationId;
+            $validated['created_by'] = $user_id;
 
             $rule = OrganizationAttendanceRule::create($validated);
 

@@ -133,6 +133,7 @@ Route::prefix('v1')->group(function () {
 
         Route::apiResource('organization-leaves', OrganizationLeaveController::class);
         Route::apiResource('organization-attendance-rule', OrganizationAttendanceRuleController::class);
+        Route::get('getbyorganization/{id}', [OrganizationAttendanceRuleController::class, 'getByOrganization']);
         Route::apiResource('organization-holiday', HolidayController::class);
         Route::apiResource('organization-project', ProjectController::class);
         Route::apiResource('organization/employee/tasks', TaskController::class);
@@ -332,6 +333,9 @@ Route::prefix('v1')->group(function () {
             Route::get('/work-on-holiday', [AttendanceController::class, 'ShowHolidayRequests']);
             Route::post('/approve-work-on-holiday', [AttendanceController::class, 'ApproveWorkOnHoliday']);
             Route::get('/employee-attendance-summary', [AttendanceController::class, 'EmployeeAttendanceSummary']);
+
+            Route::get('attendance/by-employee-date', [AttendanceController::class,'getByEmployeeAndDate']);
+
         });
 
         Route::prefix('leave')->group(function () {
@@ -584,6 +588,8 @@ Route::prefix('v1')->group(function () {
         });
 
         Route::post('/xero/sync-employee', [XeroEmployeeController::class, 'sync']);
+        Route::get('/xero/employees',[XeroEmployeeController::class, 'getAllFromXero']);
+        Route::post('/xero/timesheets/push',[XeroEmployeeController::class, 'push']);
     
            
     

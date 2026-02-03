@@ -279,18 +279,17 @@ public function callback(Request $request)
     $tenant = $tenants[0];
 
     XeroConnection::updateOrCreate(
-        ['organization_id' => $state['organization_id']],
-        [
-            'tenant_id'        => $tenant['tenantId'],
-            'tenant_name'      => $tenant['tenantName'],
-            'access_token'     => $token['access_token'],
-            'refresh_token'    => $token['refresh_token'],
-            'token_expires_at' => now()->addSeconds($token['expires_in']),
-            'connected_at'     => now(),
-            'is_active'        => true,
-        ]
-    );
-
+    ['tenant_id' => $tenant['tenantId']], // ✅ UNIQUE
+    [
+        'organization_id'  => 15, // 👈 hardcoded as you asked
+        'tenant_name'      => $tenant['tenantName'],
+        'access_token'     => $token['access_token'],
+        'refresh_token'    => $token['refresh_token'],
+        'token_expires_at' => now()->addSeconds($token['expires_in']),
+        'connected_at'     => now(),
+        'is_active'        => true,
+    ]
+);
     return response('Xero connected successfully. You can close this tab.');
 }
 
@@ -299,15 +298,25 @@ public function status(Request $request)
 {
     $connection = XeroConnection::where(
         'organization_id',
-        $request->user()->organization_id
+        15
     )->first();
 
     return response()->json([
-        'connected' => (bool) $connection,
-        'tenant' => $connection?->tenant_name,
-        'expires_at' => $connection?->token_expires_at,
+        'status' => true,
+        'debug' => [
+            'organization_id' => 15,
+            'connection_found' => (bool) $connection,
+        ],
+        'data' => [
+            'connected'   => (bool) $connection,
+            'tenant'      => $connection?->tenant_name,
+            'tenant_id'   => $connection?->tenant_id,
+            'expires_at'  => $connection?->token_expires_at,
+            'is_active'   => $connection?->is_active,
+        ]
     ]);
 }
+
 
 
 

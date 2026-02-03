@@ -76,4 +76,14 @@ class Organization extends Model
         return $query->whereIn('id', $orgIds);
     }
 
+    public function organizations()
+{
+    return $this->belongsToMany(
+        Organization::class,
+        'user_organization_roles',
+        'user_id',
+        'organization_id'
+    );
+}
+
 }

@@ -8,6 +8,8 @@ use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Support\Facades\DB;
 use App\Models\Employee\Attendance;
+use App\Models\Organization;
+
 
 class User extends Authenticatable
 {
@@ -97,5 +99,15 @@ class User extends Authenticatable
             ->select('roles.*')
             ->get();
     }
+
+public function organizations()
+{
+    return $this->belongsToMany(
+        Organization::class,
+        'user_organization_roles',
+        'user_id',
+        'organization_id'
+    );
+}
 
 }
