@@ -30,8 +30,8 @@ class RosterController extends Controller
             'employee_id' => 'required|exists:employees,id',
             'shift_id' => 'required|exists:shifts,id',
             'roster_date' => 'required|date',
-            'start_time' => 'required|date_format:H:i',
-            'end_time' => 'required|date_format:H:i|after:start_time',
+           // 'start_time' => 'required|date_format:H:i',
+           //'end_time' => 'required|date_format:H:i|after:start_time',
             'notes' => 'nullable|string|max:500',
             'created_by' => 'required|exists:users,id',
         ]);
@@ -59,8 +59,8 @@ class RosterController extends Controller
         $validated = $request->validate([
             'shift_id' => 'sometimes|exists:shifts,id',
             'roster_date' => 'sometimes|date',
-            'start_time' => 'sometimes|date_format:H:i',
-            'end_time' => 'sometimes|date_format:H:i|after:start_time',
+           // 'start_time' => 'sometimes|date_format:H:i',
+           // 'end_time' => 'sometimes|date_format:H:i|after:start_time',
             'notes' => 'nullable|string|max:500',
             'employee_id' => 'sometimes|exists:employees,id',
         ]);
@@ -88,8 +88,8 @@ class RosterController extends Controller
             'rosters.*.employee_id' => 'required|exists:employees,id',
             'rosters.*.shift_id' => 'required|exists:shifts,id',
             'rosters.*.roster_date' => 'required|date',
-            'rosters.*.start_time' => 'required|date_format:H:i',
-            'rosters.*.end_time' => 'required|date_format:H:i|after:rosters.*.start_time',
+          //  'rosters.*.start_time' => 'required|date_format:H:i',
+            //'rosters.*.end_time' => 'required|date_format:H:i|after:rosters.*.start_time',
             'rosters.*.notes' => 'nullable|string|max:500',
             'rosters.*.created_by' => 'required|exists:users,id',
         ]);
@@ -120,8 +120,8 @@ class RosterController extends Controller
                 'employee_ids' => 'required|array|min:1',
                 'employee_ids.*' => 'exists:employees,id',
                 'shift_id' => 'required|exists:shifts,id',
-                'start_time' => 'required|date_format:H:i',
-                'end_time' => 'required|date_format:H:i|after:start_time',
+             //   'start_time' => 'required|date_format:H:i',
+               // 'end_time' => 'required|date_format:H:i|after:start_time',
                 'created_by' => 'required|exists:users,id',
             ]);
 
@@ -150,8 +150,8 @@ class RosterController extends Controller
                         'employee_id' => $employeeId,
                         'shift_id' => $validated['shift_id'],
                         'roster_date' => $date->toDateString(),
-                        'start_time' => $validated['start_time'],
-                        'end_time' => $validated['end_time'],
+                       // 'start_time' => $validated['start_time'],
+                        //'end_time' => $validated['end_time'],
                         'created_by' => $validated['created_by'],
                     ]);
                 }
