@@ -42,19 +42,17 @@ class ManualAttendanceController extends Controller
 
     // ================= LIST =================
 
-    public function index(Request $request)
+    public function index($id)
     {
         try {
-            $organization_id = $request->query('organization_id');
-
-            if (!$organization_id) {
+            if (!$id) {
                 return response()->json([
                     'status' => false,
                     'message' => 'Organization ID is required.'
                 ], 400);
             }
 
-            $adjustments = manually_adjusted_attendance::where('organization_id', $organization_id)
+            $adjustments = manually_adjusted_attendance::where('organization_id', $id)
                 ->with(['employee', 'attendance'])
                 ->latest()
                 ->get();
