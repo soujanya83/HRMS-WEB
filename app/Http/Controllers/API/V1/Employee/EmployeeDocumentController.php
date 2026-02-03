@@ -28,52 +28,55 @@ class EmployeeDocumentController extends Controller
     private function extractExpiryWithAI(string $ocrText): ?string
     {
         $client = new Client();
-
-        $response = $client->post('https://api.deepseek.com/chat/completions', [
-            'headers' => [
-                'Authorization' => 'Bearer ' . env('DEEPSEEK_API_KEY'),
-                'Content-Type'  => 'application/json',
-            ],
-            'json' => [
-                'model' => 'deepseek-chat',
-                'messages' => [
-                    [
-                        'role' => 'system',
-                        'content' => 'You extract expiry dates from identity documents.'
-                    ],
-                    [
-                                            'role' => 'user',
-                                            'content' => <<<TEXT
-                        Extract the EXPIRY DATE from the document text below.
-
-                        Rules:
-                        - Choose expiry / valid-until date (not DOB or issue date)
-                        - Return ONLY in YYYY-MM-DD format
-                        - If not found, return NULL
-
-                        Document Text:
-                        """
-                        $ocrText
-                        """
-                        TEXT
-                    ]
+        try {
+            $response = $client->post('https://api.deepseek.com/chat/completions', [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . env('DEEPSEEK_API_KEY'),
+                    'Content-Type'  => 'application/json',
                 ],
-                'temperature' => 0,
-            ],
-            'timeout' => 30,
-        ]);
+                'json' => [
+                    'model' => 'deepseek-chat',
+                    'messages' => [
+                        [
+                            'role' => 'system',
+                            'content' => 'You extract expiry dates from identity documents.'
+                        ],
+                        [
+                            'role' => 'user',
+                            'content' => <<<TEXT
+Extract the EXPIRY DATE from the document text below.
 
-        $body = json_decode($response->getBody(), true);
-        $answer = trim($body['choices'][0]['message']['content'] ?? '');
+Rules:
+- Choose expiry / valid-until date (not DOB or issue date)
+- Return ONLY in YYYY-MM-DD format
+- If not found, return NULL
 
-        if ($answer !== 'NULL' && strtotime($answer)) {
-            return date('Y-m-d', strtotime($answer));
-         
-            if (strtotime($date) > time()) {
-            return $date;
+Document Text:
+"""
+$ocrText
+"""
+TEXT
+                        ]
+                    ],
+                    'temperature' => 0,
+                ],
+                'timeout' => 30,
+            ]);
+
+            $body = json_decode($response->getBody(), true);
+            $answer = trim($body['choices'][0]['message']['content'] ?? '');
+
+            if ($answer !== 'NULL' && strtotime($answer)) {
+                return date('Y-m-d', strtotime($answer));
             }
+            return null;
+        } catch (\GuzzleHttp\Exception\RequestException $e) {
+            \Log::error('DeepSeek API RequestException: ' . $e->getMessage(), ['code' => $e->getCode()]);
+            return null;
+        } catch (\Exception $e) {
+            \Log::error('DeepSeek API General Exception: ' . $e->getMessage(), ['code' => $e->getCode()]);
+            return null;
         }
-        return null;
     }
 
     // public function store(Request $request)
