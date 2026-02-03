@@ -1271,184 +1271,381 @@ class AttendanceController extends Controller
     /**
      * Mark clock-in for an employee on the current date.
      */
+    // public function clockIn(Request $request): JsonResponse
+    // {
+    //     try {
+    //         $employee = Employee::where('user_id', Auth::id())->firstOrFail();
+    //         $todayDate = Carbon::today()->toDateString();
+    //         $nowTime = Carbon::now();
+
+    //         // ✅ Check if today is a holiday
+    //         $checkHoliday = HolidayModel::where('organization_id', $employee->organization_id)
+    //             ->whereDate('holiday_date', $todayDate)
+    //             ->first();
+
+    //         // ✅ Get working day / shift info
+    //         $attendanceRule = OrganizationAttendanceRule::where([
+    //             'organization_id' => $employee->organization_id,
+    //         ])->first();
+
+    //         $roster = Roster::where('employee_id', $employee->id)
+    //             ->pluck('shift_id');
+
+    //         $shiftDetails = Shift::whereIn('id', $roster)->first();
+    //         // dd($shiftDetails);
+
+    //         $todayDayName = Carbon::today()->format('l'); // e.g. "Saturday"
+
+    //         // 🔹 Case 1: If it's a holiday
+    //         if ($checkHoliday) {
+    //             $workOnHoliday = WorkOnHoliday::where('employee_id', $employee->id)
+    //                 ->whereDate('work_date', $todayDate)
+    //                 ->whereIn('status', ['hr_approved'])
+    //                 ->first();
+
+    //             if (!$workOnHoliday) {
+    //                 return response()->json([
+    //                     'status' => false,
+    //                     'message' => 'You are not approved to work on today’s holiday.',
+    //                 ], 403);
+    //             }
+
+    //             $attendance = Attendance::where(
+    //                 ['employee_id' => $employee->id],
+    //                 ['status' => 'work_on_holiday']
+    //             )->whereDate('date', $todayDate)->first();
+
+    //             if (!$attendance->check_in) {
+
+    //                 $attendance->update(['check_in' => $nowTime]);
+    //                 return response()->json([
+    //                     'status' => true,
+    //                     'message' => "Check-in marked successfully for holiday work at {$nowTime}.",
+    //                     'data' => $attendance->fresh(),
+    //                 ]);
+    //             }
+
+
+
+
+    //             return response()->json([
+    //                 'status' => false,
+    //                 'message' => 'You have already clocked in today.',
+    //             ]);
+    //         }
+
+    //         // 🔹 Case 2: Regular working day
+    //         if ($attendanceRule && !empty($attendanceRule->weekly_off_days)) {
+    //             $weeklyOffs = array_map('trim', explode(',', $attendanceRule->weekly_off_days));
+
+    //             if (in_array($todayDayName, $weeklyOffs)) {
+    //                 return response()->json([
+    //                     'status' => false,
+    //                     'message' => "Today ({$todayDayName}) is your weekly off day.",
+    //                 ]);
+    //             }
+    //         }
+
+
+    //         // Mark attendance for normal working day
+    //         $attendance = Attendance::firstOrCreate(
+    //             ['employee_id' => $employee->id, 'date' => $todayDate],
+    //             ['status' => 'present']
+    //         );
+
+
+
+    //         if (!$attendance->check_in) {
+    //             $attendance->update(['check_in' => $nowTime]);
+    //             $message = "Clock-in recorded successfully at {$nowTime}.";
+    //         } else {
+    //             $message = 'You have already clocked in today.';
+    //         }
+
+    //         if ($attendanceRule) {
+    //             $scheduledCheckIn = $attendanceRule->check_in;
+    //             $actualCheckIn = $attendance->check_in;
+
+    //             $lateGraceMinutes = $attendanceRule->late_grace_minutes ?? 0;
+    //             $gracePeriodEnd = $scheduledCheckIn->copy()->addMinutes($lateGraceMinutes);
+
+    //             if ($actualCheckIn->greaterThan($gracePeriodEnd)) {
+    //                 // Mark as late
+    //                 $attendance->update(['is_late' => 1]);
+    //             } else {
+    //                 // On time
+    //                 $attendance->update(['is_late' => 0]);
+    //             }
+    //         }
+
+    //         return response()->json([
+    //             'status' => true,
+    //             'message' => $message,
+    //             'data' => $attendance->fresh(),
+    //         ]);
+    //     } catch (\Exception $e) {
+    //         return response()->json([
+    //             'status' => false,
+    //             'message' => 'Failed to mark attendance.',
+    //             'error' => $e->getMessage(),
+    //         ], 500);
+    //     }
+    // }
+
     public function clockIn(Request $request): JsonResponse
-    {
-        try {
-            $employee = Employee::where('user_id', Auth::id())->firstOrFail();
-            $todayDate = Carbon::today()->toDateString();
-            $nowTime = Carbon::now();
+{
+    try {
 
-            // ✅ Check if today is a holiday
-            $checkHoliday = HolidayModel::where('organization_id', $employee->organization_id)
-                ->whereDate('holiday_date', $todayDate)
-                ->first();
+        /* ============================
+         | 1. VALIDATION
+         ============================ */
+        $validated = $request->validate([
+            'employee_id' => ['required', 'exists:employees,id'],
+            'date'        => ['required', 'date'],
+            'check_in'    => ['required', 'date_format:H:i'],
+            'notes'       => ['nullable', 'string', 'max:500'],
+        ]);
 
-            // ✅ Get working day / shift info
-            $attendanceRule = OrganizationAttendanceRule::where([
-                'organization_id' => $employee->organization_id,
-            ])->first();
+        /* ============================
+         | 2. EMPLOYEE + TIMEZONE
+         ============================ */
+        $employee = Employee::with('organization:id,timezone')
+            ->findOrFail($validated['employee_id']);
 
-            $roster = Roster::where('employee_id', $employee->id)
-                ->pluck('shift_id');
+        $timezone = $employee->organization->timezone ?? 'Australia/Sydney';
 
-            $shiftDetails = Shift::whereIn('id', $roster)->first();
-            // dd($shiftDetails);
+        $dateInTz = Carbon::parse($validated['date'])
+            ->setTimezone($timezone)
+            ->format('Y-m-d');
 
-            $todayDayName = Carbon::today()->format('l'); // e.g. "Saturday"
+        $checkInTime = Carbon::createFromFormat(
+            'Y-m-d H:i',
+            "{$dateInTz} {$validated['check_in']}"
+        )->format('H:i');
 
-            // 🔹 Case 1: If it's a holiday
-            if ($checkHoliday) {
-                $workOnHoliday = WorkOnHoliday::where('employee_id', $employee->id)
-                    ->whereDate('work_date', $todayDate)
-                    ->whereIn('status', ['hr_approved'])
-                    ->first();
+        /* ============================
+         | 3. EXISTING ATTENDANCE
+         ============================ */
+        $attendance = Attendance::where('employee_id', $employee->id)
+            ->where('date', $dateInTz)
+            ->first();
 
-                if (!$workOnHoliday) {
-                    return response()->json([
-                        'status' => false,
-                        'message' => 'You are not approved to work on today’s holiday.',
-                    ], 403);
-                }
-
-                $attendance = Attendance::where(
-                    ['employee_id' => $employee->id],
-                    ['status' => 'work_on_holiday']
-                )->whereDate('date', $todayDate)->first();
-
-                if (!$attendance->check_in) {
-
-                    $attendance->update(['check_in' => $nowTime]);
-                    return response()->json([
-                        'status' => true,
-                        'message' => "Check-in marked successfully for holiday work at {$nowTime}.",
-                        'data' => $attendance->fresh(),
-                    ]);
-                }
-
-
-
-
-                return response()->json([
-                    'status' => false,
-                    'message' => 'You have already clocked in today.',
-                ]);
-            }
-
-            // 🔹 Case 2: Regular working day
-            if ($attendanceRule && !empty($attendanceRule->weekly_off_days)) {
-                $weeklyOffs = array_map('trim', explode(',', $attendanceRule->weekly_off_days));
-
-                if (in_array($todayDayName, $weeklyOffs)) {
-                    return response()->json([
-                        'status' => false,
-                        'message' => "Today ({$todayDayName}) is your weekly off day.",
-                    ]);
-                }
-            }
-
-
-            // Mark attendance for normal working day
-            $attendance = Attendance::firstOrCreate(
-                ['employee_id' => $employee->id, 'date' => $todayDate],
-                ['status' => 'present']
-            );
-
-
-
-            if (!$attendance->check_in) {
-                $attendance->update(['check_in' => $nowTime]);
-                $message = "Clock-in recorded successfully at {$nowTime}.";
-            } else {
-                $message = 'You have already clocked in today.';
-            }
-
-            if ($attendanceRule) {
-                $scheduledCheckIn = $attendanceRule->check_in;
-                $actualCheckIn = $attendance->check_in;
-
-                $lateGraceMinutes = $attendanceRule->late_grace_minutes ?? 0;
-                $gracePeriodEnd = $scheduledCheckIn->copy()->addMinutes($lateGraceMinutes);
-
-                if ($actualCheckIn->greaterThan($gracePeriodEnd)) {
-                    // Mark as late
-                    $attendance->update(['is_late' => 1]);
-                } else {
-                    // On time
-                    $attendance->update(['is_late' => 0]);
-                }
-            }
-
+        if ($attendance && $attendance->check_in) {
             return response()->json([
-                'status' => true,
-                'message' => $message,
-                'data' => $attendance->fresh(),
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Failed to mark attendance.',
-                'error' => $e->getMessage(),
-            ], 500);
+                'success' => false,
+                'message' => 'Check-in already recorded for today.',
+            ], 422);
         }
+
+        /* ============================
+         | 4. LATE CALCULATION
+         ============================ */
+        $is_late = 0;
+
+        $attendanceRule = OrganizationAttendanceRule::where(
+            'organization_id',
+            $employee->organization_id
+        )->first();
+
+        $rosterShiftIds = Roster::where('employee_id', $employee->id)
+            ->whereDate('roster_date', $dateInTz)
+            ->pluck('shift_id');
+
+        $shift = $rosterShiftIds->isNotEmpty()
+            ? Shift::whereIn('id', $rosterShiftIds)->first()
+            : null;
+
+        if ($attendanceRule && $shift && $shift->start_time) {
+
+            $scheduledCheckIn = Carbon::parse($shift->start_time);
+            $actualCheckIn    = Carbon::parse($checkInTime);
+
+            $graceMinutes = $attendanceRule->late_grace_minutes ?? 0;
+            $graceEnd     = $scheduledCheckIn->copy()->addMinutes($graceMinutes);
+
+            if ($actualCheckIn->greaterThan($graceEnd)) {
+                $is_late = 1;
+            }
+        }
+
+        /* ============================
+         | 5. CREATE / UPDATE
+         ============================ */
+        if (!$attendance) {
+            $attendance = Attendance::create([
+                'employee_id'      => $employee->id,
+                'organization_id'  => $employee->organization_id,
+                'date'             => $dateInTz,
+                'check_in'         => $checkInTime,
+                'status'           => 'present',
+                'notes'            => $validated['notes'] ?? null,
+                'is_late'          => $is_late,
+                'total_work_hours' => 0,
+            ]);
+        } else {
+            $attendance->update([
+                'check_in' => $checkInTime,
+                'is_late'  => $is_late,
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Clock-in recorded successfully.',
+            'data'    => $attendance,
+        ], 201);
+
+    } catch (\Exception $e) {
+
+        Log::error('Clock In Error', [
+            'error' => $e->getMessage(),
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Something went wrong during clock-in.',
+        ], 500);
     }
+}
+
 
 
     /**
      * Mark clock-out for an employee on the current date.
      */
+    // public function clockOut(Request $request): JsonResponse
+    // {
+    //     $employee = Employee::where('user_id', Auth::user()->id)
+    //         ->select('id')
+    //         ->first();
+
+    //     // dd($request->all());
+
+    //     $today = Carbon::today();
+    //     $attendance = Attendance::where('employee_id',  $employee->id)
+    //         ->where('date', $today)
+    //         ->first();
+
+    //     if (!$attendance) {
+    //         return response()->json([
+    //             'success' => false,
+    //             'message' => 'No attendance record found for today. Please clock-in first.'
+    //         ], 404);
+    //     }
+
+    //     if (!$attendance->check_out) {
+    //         $checkIn = Carbon::parse($attendance->check_in);
+    //         $checkOut = Carbon::now();
+
+    //         // Calculate time difference as a DateInterval
+    //         $diff = $checkOut->diff($checkIn);
+
+    //         // Format total work duration as HH:MM:SS
+    //         $totalWorkingHours = sprintf(
+    //             '%02d:%02d:%02d',
+    //             $diff->h + ($diff->d * 24), // total hours (in case next day)
+    //             $diff->i,                   // minutes
+    //             $diff->s                    // seconds
+    //         );
+
+
+    //         // Update attendance record
+    //         $attendance->update([
+    //             'check_out' => $checkOut->format('H:i:s'),
+    //             'total_work_hours' => $totalWorkingHours,
+    //         ]);
+
+    //         $message = "Clock-out recorded successfully. You have worked for {$totalWorkingHours}.";
+    //     } else {
+    //         $message = 'You have already clocked out today.';
+    //     }
+
+    //     return response()->json([
+    //         'success' => true,
+    //         'data' => $attendance->fresh(),
+    //         'message' => $message
+    //     ]);
+    // }
+
     public function clockOut(Request $request): JsonResponse
-    {
-        $employee = Employee::where('user_id', Auth::user()->id)
-            ->select('id')
+{
+    try {
+
+        /* ============================
+         | 1. VALIDATION
+         ============================ */
+        $validated = $request->validate([
+            'employee_id' => ['required', 'exists:employees,id'],
+            'date'        => ['required', 'date'],
+            'check_out'   => ['required', 'date_format:H:i'],
+            'notes'       => ['nullable', 'string', 'max:500'],
+        ]);
+
+        /* ============================
+         | 2. EMPLOYEE + TIMEZONE
+         ============================ */
+        $employee = Employee::findOrFail($validated['employee_id']);
+
+        $dateInTz = Carbon::parse($validated['date'])->format('Y-m-d');
+
+        $attendance = Attendance::where('employee_id', $employee->id)
+            ->where('date', $dateInTz)
             ->first();
 
-        // dd($request->all());
-
-        $today = Carbon::today();
-        $attendance = Attendance::where('employee_id',  $employee->id)
-            ->where('date', $today)
-            ->first();
-
-        if (!$attendance) {
+        if (!$attendance || !$attendance->check_in) {
             return response()->json([
                 'success' => false,
-                'message' => 'No attendance record found for today. Please clock-in first.'
-            ], 404);
+                'message' => 'Check-in is required before check-out.',
+            ], 422);
         }
 
-        if (!$attendance->check_out) {
-            $checkIn = Carbon::parse($attendance->check_in);
-            $checkOut = Carbon::now();
-
-            // Calculate time difference as a DateInterval
-            $diff = $checkOut->diff($checkIn);
-
-            // Format total work duration as HH:MM:SS
-            $totalWorkingHours = sprintf(
-                '%02d:%02d:%02d',
-                $diff->h + ($diff->d * 24), // total hours (in case next day)
-                $diff->i,                   // minutes
-                $diff->s                    // seconds
-            );
-
-
-            // Update attendance record
-            $attendance->update([
-                'check_out' => $checkOut->format('H:i:s'),
-                'total_work_hours' => $totalWorkingHours,
-            ]);
-
-            $message = "Clock-out recorded successfully. You have worked for {$totalWorkingHours}.";
-        } else {
-            $message = 'You have already clocked out today.';
+        if ($attendance->check_out) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Check-out already recorded.',
+            ], 422);
         }
+
+        $checkOutTime = Carbon::createFromFormat(
+            'Y-m-d H:i',
+            "{$dateInTz} {$validated['check_out']}"
+        )->format('H:i');
+
+        /* ============================
+         | 3. TOTAL HOURS
+         ============================ */
+        $totalWorkingHours =
+            Carbon::parse($attendance->check_in)
+                ->diffInMinutes(Carbon::parse($checkOutTime)) / 60;
+
+        /* ============================
+         | 4. UPDATE
+         ============================ */
+        $attendance->update([
+            'check_out'        => $checkOutTime,
+            'total_work_hours' => $totalWorkingHours,
+            'notes'            => $validated['notes'] ?? $attendance->notes,
+        ]);
 
         return response()->json([
             'success' => true,
-            'data' => $attendance->fresh(),
-            'message' => $message
+            'message' => 'Clock-out recorded successfully.',
+            'data'    => $attendance,
+        ], 200);
+
+    } catch (\Exception $e) {
+
+        Log::error('Clock Out Error', [
+            'error' => $e->getMessage(),
         ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Something went wrong during clock-out.',
+        ], 500);
     }
+}
+
 
     // both the hr or manager also can create request and also employee 
     public function RequestWorkOnHoliday(Request $request)
@@ -1744,7 +1941,7 @@ class AttendanceController extends Controller
 
     } catch (\Exception $e) {
 
-        \Log::error('Get Attendance Error', [
+        Log::error('Get Attendance Error', [
             'error' => $e->getMessage(),
             'file'  => $e->getFile(),
             'line'  => $e->getLine(),
