@@ -15,6 +15,7 @@ use App\Http\Controllers\API\V1\Recruitment\OnboardingTemplateTaskController;
 use App\Http\Controllers\API\V1\Recruitment\OnboardingAutomationController;
 use App\Http\Controllers\API\V1\Employee\EmployeeController;
 use App\Http\Controllers\API\V1\Attendance\AttendanceController;
+use App\Http\Controllers\API\V1\Attendance\ManualAttendanceController;
 use App\Http\Controllers\API\V1\Employee\LeaveController;
 use App\Http\Controllers\API\V1\Employee\EmployeeDocumentController;
 use App\Http\Controllers\API\V1\Employee\EmployeeExitController;
@@ -337,6 +338,24 @@ Route::prefix('v1')->group(function () {
             Route::get('attendance/by-employee-date', [AttendanceController::class,'getByEmployeeAndDate']);
 
         });
+
+        Route::prefix('manual-attendance')->group(function(){
+
+        Route::post('/store',[ManualAttendanceController::class,'store']);
+
+        Route::get('/list/{id}',[ManualAttendanceController::class,'index']);
+
+        Route::get('/view/{id}',[ManualAttendanceController::class,'show']);
+
+        Route::post('/update/{id}',[ManualAttendanceController::class,'update']);
+
+        Route::delete('/delete/{id}',[ManualAttendanceController::class,'destroy']);
+
+        Route::post('/approve/{id}',[ManualAttendanceController::class,'approve']);
+
+        Route::post('/reject/{id}',[ManualAttendanceController::class,'reject']);
+
+    });
 
         Route::prefix('leave')->group(function () {
             Route::get('/', [LeaveController::class, 'index']);
