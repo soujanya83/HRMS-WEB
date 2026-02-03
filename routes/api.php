@@ -426,13 +426,15 @@ Route::prefix('v1')->group(function () {
         Route::prefix('shifts')->group(function () {
             Route::get('/', [ShiftController::class, 'index']);
             Route::post('/', [ShiftController::class, 'store']);
+             Route::get('/calendar', [ShiftController::class, 'calendar']);
+             Route::get('/trashed', [ShiftController::class, 'trashed']);
             Route::get('/{id}', [ShiftController::class, 'show']);
             Route::put('/{id}', [ShiftController::class, 'update']);
             Route::patch('/{id}', [ShiftController::class, 'update']);
             Route::delete('/{id}', [ShiftController::class, 'destroy']);
-            Route::get('/trashed', [ShiftController::class, 'trashed']);
+            
             Route::patch('/{id}/restore', [ShiftController::class, 'restore']);
-            Route::get('/calendar', [ShiftController::class, 'calendar']);
+           
         });
 
         Route::prefix('rosters')->group(function () {

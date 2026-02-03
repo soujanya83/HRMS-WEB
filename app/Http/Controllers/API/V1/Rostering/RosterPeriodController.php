@@ -14,7 +14,7 @@ class RosterPeriodController extends Controller
     {
         $validated = $request->validate([
             'organization_id' => 'required|exists:organizations,id',
-            'type' => 'required|in:weekly,monthly',
+            'type' => 'required|in:weekly,fortnightly,monthly',
             'start_date' => 'required|date',
             'created_by' => 'required|exists:users,id',
         ]);
@@ -22,6 +22,9 @@ class RosterPeriodController extends Controller
         if ($validated['type'] === 'weekly') {
             $start = Carbon::parse($validated['start_date'])->startOfWeek();
             $end   = $start->copy()->endOfWeek();
+        } elseif ($validated['type'] === 'fortnightly') {
+            $start = Carbon::parse($validated['start_date'])->startOfWeek();
+            $end   = $start->copy()->addDays(13)->endOfDay(); // 2 weeks (14 days)
         } else {
             $start = Carbon::parse($validated['start_date'])->startOfMonth();
             $end   = $start->copy()->endOfMonth();
