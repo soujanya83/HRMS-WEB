@@ -64,6 +64,7 @@ class AuthController extends Controller
             $validator = Validator::make($request->all(), [
                 'email'    => 'required|string|email',
                 'password' => 'required|string|min:6',
+                'deviceId' => 'nullable|string',
             ]);
     
             if ($validator->fails()) {
@@ -91,8 +92,20 @@ class AuthController extends Controller
                     "message" => "Incorrect password"
                 ], 401);
             }
-    
-            // ✅ Generate token
+            if (empty($user->device_id)) {
+                // login, save device 
+                $user->device_id = $request->deviceId;
+                $user->save();
+            } else {
+                // again login..same deice
+                if ($user->device_id !== $request->deviceId) {
+                    return response()->json([
+                        "status"  => false,
+                        "message" => "Login not allowed from this device. Please use your registered device."
+                    ], 403);
+                }
+            }
+
             $token = $user->createToken("API Token")->plainTextToken;
     
             return response()->json([
