@@ -163,6 +163,15 @@ public function push(Request $request)
                 'Accept' => 'application/json',
             ])->post('https://api.xero.com/payroll.xro/1.0/Timesheets', $payload);
 
+            if (!$response->successful()) {
+    Log::error('Xero Timesheet Push Failed', [
+        'employee_id' => $employeeId,
+        'payload' => $payload,
+        'response' => $response->json(),
+        'status' => $response->status(),
+    ]);
+}
+
             if ($response->successful()) {
 
                 $xero = $response->json()['Timesheets'][0];
