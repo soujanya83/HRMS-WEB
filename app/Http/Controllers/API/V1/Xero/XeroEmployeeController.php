@@ -18,6 +18,8 @@ use App\Services\Xero\XeroTokenService;
 use App\Services\XeroEmployeeService;
 use App\Services\XeroTimesheetService;
 use App\Models\XeroTimesheet;
+use Carbon\CarbonPeriod;
+
 
 class XeroEmployeeController extends Controller
 {
@@ -117,7 +119,7 @@ public function push(Request $request)
     //------------------------------------------------------------------------
     //timesheet api controllers
 
-     public function pushApproved(Request $request)
+public function pushApproved(Request $request)
 {
     Log::info('Xero Timesheet Push Started', [
         'request_data' => $request->all()
@@ -163,9 +165,7 @@ public function push(Request $request)
     $connection = app(\App\Services\Xero\XeroTokenService::class)
         ->refreshIfNeeded($connection);
 
-    Log::info('Xero token checked/refreshed', [
-        'access_token_expires' => $connection->expires_at ?? null
-    ]);
+    Log::info('Xero token checked/refreshed');
 
     // ----------------------------------------------------
     // FETCH TIMESHEETS
@@ -178,14 +178,6 @@ public function push(Request $request)
     Log::info('Timesheets fetched', [
         'total_timesheets' => $timesheets->count()
     ]);
-
-    if ($timesheets->isEmpty()) {
-        Log::warning('No timesheets found matching criteria', [
-            'organization_id' => $orgId,
-            'status' => 'submitted',
-            'xero_synced_at' => 'NULL'
-        ]);
-    }
 
     $timesheets = $timesheets->groupBy('employee_id');
 
@@ -215,39 +207,53 @@ public function push(Request $request)
         // ------------------------------------------------
         $empXero = EmployeeXeroConnection::where('employee_id', $employeeId)->first();
 
-        if (!$empXero) {
-            Log::warning('Employee Xero connection missing', [
+        if (!$empXero || !$empXero->xero_employee_id || !$empXero->OrdinaryEarningsRateID) {
+            Log::warning('Employee Xero data missing/incomplete', [
                 'employee_id' => $employeeId
             ]);
-
-            $skippedNoXeroEmployee++;
-            continue;
-        }
-
-        if (!$empXero->xero_employee_id || !$empXero->OrdinaryEarningsRateID) {
-            Log::error('Employee Xero data incomplete', [
-                'employee_id' => $employeeId,
-                'xero_employee_id' => $empXero->xero_employee_id,
-                'earnings_rate_id' => $empXero->OrdinaryEarningsRateID
-            ]);
-
             $skippedNoXeroEmployee++;
             continue;
         }
 
         // ------------------------------------------------
-        // PAYLOAD PREP
+        // DATE RANGE (PAY PERIOD)
         // ------------------------------------------------
-        $totalHours = $rows->sum('regular_hours');
+        $startDate = Carbon::parse($rows->first()->from_date)->toDateString();
+        $endDate   = Carbon::parse($rows->first()->to_date)->toDateString();
 
+        // ------------------------------------------------
+        // BUILD DAILY HOURS ARRAY (MANDATORY FOR XERO)
+        // ------------------------------------------------
+        $period = CarbonPeriod::create($startDate, $endDate);
+        $dailyHours = [];
+
+        foreach ($period as $date) {
+            // Example logic: weekdays = hours, weekends = 0
+            $hours = $rows->sum('regular_hours') / $period->count();
+
+            // Round to quarter hours (safe for Xero)
+            $hours = round($hours * 4) / 4;
+
+            $dailyHours[] = $date->isWeekday() ? $hours : 0;
+        }
+
+        Log::info('Daily hours calculated', [
+            'employee_id' => $employeeId,
+            'days' => count($dailyHours),
+            'hours_array' => $dailyHours
+        ]);
+
+        // ------------------------------------------------
+        // PAYLOAD
+        // ------------------------------------------------
         $payload = [
             "Timesheets" => [[
                 "EmployeeID" => $empXero->xero_employee_id,
-                "StartDate" => $rows->first()->from_date,
-                "EndDate" => $rows->first()->to_date,
+                "StartDate" => $startDate,
+                "EndDate" => $endDate,
                 "TimesheetLines" => [[
                     "EarningsRateID" => $empXero->OrdinaryEarningsRateID,
-                    "NumberOfUnits" => $totalHours
+                    "NumberOfUnits" => $dailyHours
                 ]]
             ]]
         ];
@@ -272,16 +278,12 @@ public function push(Request $request)
             'response' => $response->json()
         ]);
 
-        // ------------------------------------------------
-        // FAILURE FROM XERO
-        // ------------------------------------------------
         if (!$response->successful()) {
             Log::error('Xero API timesheet creation failed', [
                 'employee_id' => $employeeId,
                 'status' => $response->status(),
-                'response' => $response->json()
+                'response' => $response->body()
             ]);
-
             $xeroFailed++;
             continue;
         }
@@ -293,10 +295,8 @@ public function push(Request $request)
 
         if (!$xero || !isset($xero['TimesheetID'])) {
             Log::error('Xero response missing TimesheetID', [
-                'employee_id' => $employeeId,
-                'response' => $response->json()
+                'employee_id' => $employeeId
             ]);
-
             $xeroFailed++;
             continue;
         }
@@ -307,10 +307,10 @@ public function push(Request $request)
             'xero_connection_id' => $connection->id,
             'xero_timesheet_id' => $xero['TimesheetID'],
             'xero_employee_id' => $empXero->xero_employee_id,
-            'start_date' => $rows->first()->from_date,
-            'end_date' => $rows->first()->to_date,
-            'total_hours' => $totalHours,
-            'ordinary_hours' => $totalHours,
+            'start_date' => $startDate,
+            'end_date' => $endDate,
+            'total_hours' => array_sum($dailyHours),
+            'ordinary_hours' => array_sum($dailyHours),
             'status' => 'CREATED',
             'xero_data' => $xero,
             'is_synced' => true,
