@@ -388,43 +388,55 @@ public function getAvailablePayPeriods(Request $request)
         ->refreshIfNeeded($connection);
 
     try {
-        // Fetch all payroll calendars
-        $response = Http::withHeaders([
+        // 1️⃣ Fetch payroll calendars
+        $calendarResponse = Http::withHeaders([
             'Authorization' => 'Bearer ' . $connection->access_token,
             'Xero-Tenant-Id' => $connection->tenant_id,
             'Accept' => 'application/json',
         ])->get('https://api.xero.com/payroll.xro/1.0/PayrollCalendars');
 
-        if (!$response->successful()) {
+        if (!$calendarResponse->successful()) {
             return response()->json([
                 'status' => false,
                 'message' => 'Failed to fetch pay calendars from Xero'
             ], 500);
         }
 
-        $responseData = $response->json();
-
-         Log::info('Xero Payroll Calendars Raw Response', $responseData);
-
-
-        $calendars = $response->json()['PayrollCalendars'] ?? [];
-        
-        // Extract all pay periods from all calendars
+        $calendars = $calendarResponse->json()['PayrollCalendars'] ?? [];
         $allPayPeriods = [];
-        
+
+        // 2️⃣ Loop calendars
         foreach ($calendars as $calendar) {
+
+            $calendarId   = $calendar['PayrollCalendarID'];
             $calendarName = $calendar['Name'] ?? 'Unknown Calendar';
-            $periods = $calendar['CalendarPeriods'] ?? [];
-            
+
+            // 3️⃣ Fetch periods for this calendar
+            $periodResponse = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $connection->access_token,
+                'Xero-Tenant-Id' => $connection->tenant_id,
+                'Accept' => 'application/json',
+            ])->get(
+                "https://api.xero.com/payroll.xro/1.0/PayrollCalendarPeriods/{$calendarId}"
+            );
+
+            if (!$periodResponse->successful()) {
+                continue;
+            }
+
+            $periods = $periodResponse->json()['PayrollCalendarPeriods'] ?? [];
+
+            // 4️⃣ Loop periods
             foreach ($periods as $period) {
-               $startDate = $this->parseXeroDate($period['StartDate'] ?? null);
+
+                $startDate = $this->parseXeroDate($period['StartDate'] ?? null);
                 $endDate   = $this->parseXeroDate($period['EndDate'] ?? null);
 
                 if (!$startDate || !$endDate) {
                     continue;
                 }
-                
-                // Only show future or current periods
+
+                // Only current / future periods
                 if ($endDate->isFuture() || $endDate->isToday()) {
                     $allPayPeriods[] = [
                         'calendar_name' => $calendarName,
@@ -439,8 +451,8 @@ public function getAvailablePayPeriods(Request $request)
             }
         }
 
-        // Sort by start date (latest first)
-        usort($allPayPeriods, function($a, $b) {
+        // 5️⃣ Sort latest first
+        usort($allPayPeriods, function ($a, $b) {
             return strtotime($b['start_date']) - strtotime($a['start_date']);
         });
 
@@ -451,6 +463,7 @@ public function getAvailablePayPeriods(Request $request)
         ]);
 
     } catch (\Exception $e) {
+
         Log::error('Error fetching pay periods', [
             'error' => $e->getMessage()
         ]);
@@ -461,6 +474,7 @@ public function getAvailablePayPeriods(Request $request)
         ], 500);
     }
 }
+
 
 
 private function parseXeroDate($xeroDate)
