@@ -143,6 +143,14 @@ Route::prefix('v1')->group(function () {
         Route::post('employee/timesheet', [TimesheetController::class, 'CreateTimeSheetManually']);
         Route::post('employee/timesheet/review',[TimesheetController::class,'reviewTimesheet']);
       Route::post('employee/timesheet/payrun',[TimesheetController::class,'createPayRun']);
+
+
+
+      Route::post('/timesheets/generate', [TimesheetController::class, 'generate']);
+      Route::get('/timesheets', [TimesheetController::class, 'index']);
+      Route::put('/timesheets/{id}', [TimesheetController::class, 'update']);
+      Route::post('/timesheets/submit', [TimesheetController::class, 'submit']);
+
         
 
         Route::get('employee/payrun/{organizationId}', [PayrunController::class, 'getPayrun']);
