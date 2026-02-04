@@ -479,8 +479,12 @@ public function getAvailablePayPeriods(Request $request)
 
 private function parseXeroDate($xeroDate)
 {
+    if (!$xeroDate) {
+        return null;
+    }
+
     if (preg_match('/\/Date\((\d+)/', $xeroDate, $matches)) {
-        return Carbon::createFromTimestampMs($matches[1]);
+        return \Carbon\Carbon::createFromTimestampMs($matches[1]);
     }
 
     return null;
