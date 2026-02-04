@@ -23,6 +23,7 @@ use App\Models\Payrolls;
 use App\Models\XeroPayRun;
 
 
+
 class TimesheetController extends Controller
 {
     public function store(Request $request): JsonResponse
@@ -1640,15 +1641,25 @@ class TimesheetController extends Controller
     /**
      * Submit timesheets for approval
      */
-    public function submit(Request $request)
-    {
-        Timesheet::whereIn('id', $request->timesheet_ids)
-            ->update([
-                'status' => 'submitted'
-            ]);
+   public function submit(Request $request)
+{
+    $request->validate([
+        'timesheet_ids' => 'required|array',
+        'timesheet_ids.*' => 'exists:timesheets,id',
+    ]);
 
-        return response()->json(['status' => true]);
-    }
+    Timesheet::whereIn('id', $request->timesheet_ids)
+        ->update([
+            'status'       => 'submitted',
+            'approved_at'  => Carbon::now(),     // current time
+            'approved_by'  => Auth::id(),         // logged-in user id
+        ]);
+
+    return response()->json([
+        'status'  => true,
+        'message' => 'Timesheets submitted successfully'
+    ]);
+}
 
 
 
