@@ -246,17 +246,32 @@ public function pushApproved(Request $request)
         // ------------------------------------------------
         // PAYLOAD
         // ------------------------------------------------
+        // $payload = [
+        //     "Timesheets" => [[
+        //         "EmployeeID" => $empXero->xero_employee_id,
+        //         "StartDate" => $startDate,
+        //         "EndDate" => $endDate,
+        //         "TimesheetLines" => [[
+        //             "EarningsRateID" => $empXero->OrdinaryEarningsRateID,
+        //             "NumberOfUnits" => $dailyHours
+        //         ]]
+        //     ]]
+        // ];
+
         $payload = [
-            "Timesheets" => [[
-                "EmployeeID" => $empXero->xero_employee_id,
-                "StartDate" => $startDate,
-                "EndDate" => $endDate,
-                "TimesheetLines" => [[
-                    "EarningsRateID" => $empXero->OrdinaryEarningsRateID,
-                    "NumberOfUnits" => $dailyHours
-                ]]
-            ]]
-        ];
+    [
+        'EmployeeID' => $empXero->xero_employee_id,
+        'StartDate' => $startDate,
+        'EndDate' => $endDate,
+        'TimesheetLines' => [
+            [
+                'EarningsRateID' => $empXero->OrdinaryEarningsRateID,
+                'NumberOfUnits' => $dailyHours,
+            ]
+        ]
+    ]
+];
+        
 
         Log::info('Xero timesheet payload prepared', [
             'employee_id' => $employeeId,
