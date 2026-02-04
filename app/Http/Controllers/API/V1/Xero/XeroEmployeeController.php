@@ -362,4 +362,100 @@ public function pushApproved(Request $request)
         'xero_failed' => $xeroFailed
     ]);
 }
+
+
+
+
+
+public function getAvailablePayPeriods(Request $request)
+{
+    $orgId = $request->organization_id;
+
+    // Xero connection
+    $connection = XeroConnection::where('organization_id', $orgId)
+        ->where('is_active', 1)
+        ->first();
+
+    if (!$connection) {
+        return response()->json([
+            'status' => false,
+            'message' => 'Xero not connected'
+        ], 404);
+    }
+
+    // Token refresh
+    $connection = app(\App\Services\Xero\XeroTokenService::class)
+        ->refreshIfNeeded($connection);
+
+    try {
+        // Fetch all payroll calendars
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer ' . $connection->access_token,
+            'Xero-Tenant-Id' => $connection->tenant_id,
+            'Accept' => 'application/json',
+        ])->get('https://api.xero.com/payroll.xro/1.0/PayrollCalendars');
+
+        if (!$response->successful()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Failed to fetch pay calendars from Xero'
+            ], 500);
+        }
+
+        $calendars = $response->json()['PayrollCalendars'] ?? [];
+        
+        // Extract all pay periods from all calendars
+        $allPayPeriods = [];
+        
+        foreach ($calendars as $calendar) {
+            $calendarName = $calendar['Name'] ?? 'Unknown Calendar';
+            $periods = $calendar['CalendarPeriods'] ?? [];
+            
+            foreach ($periods as $period) {
+                $startDate = Carbon::parse($period['StartDate']);
+                $endDate = Carbon::parse($period['EndDate']);
+                
+                // Only show future or current periods
+                if ($endDate->isFuture() || $endDate->isToday()) {
+                    $allPayPeriods[] = [
+                        'calendar_name' => $calendarName,
+                        'start_date' => $startDate->toDateString(),
+                        'end_date' => $endDate->toDateString(),
+                        'start_date_formatted' => $startDate->format('d M Y'),
+                        'end_date_formatted' => $endDate->format('d M Y'),
+                        'period_status' => $period['PeriodStatus'] ?? 'Unknown',
+                        'number_of_days' => $startDate->diffInDays($endDate) + 1,
+                    ];
+                }
+            }
+        }
+
+        // Sort by start date (latest first)
+        usort($allPayPeriods, function($a, $b) {
+            return strtotime($b['start_date']) - strtotime($a['start_date']);
+        });
+
+        return response()->json([
+            'status' => true,
+            'pay_periods' => $allPayPeriods,
+            'message' => 'Select a pay period to generate timesheets'
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('Error fetching pay periods', [
+            'error' => $e->getMessage()
+        ]);
+
+        return response()->json([
+            'status' => false,
+            'message' => 'Error: ' . $e->getMessage()
+        ], 500);
+    }
 }
+
+
+
+
+
+
+   }
