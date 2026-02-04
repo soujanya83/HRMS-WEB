@@ -151,6 +151,9 @@ Route::prefix('v1')->group(function () {
 
         Route::get('/timesheets/{organizationId}', [TimesheetController::class, 'index']);
         Route::post('/timesheets/{id}', [TimesheetController::class, 'update']);
+        
+        Route::post('/xero/timesheets/push', [XeroEmployeeController::class, 'pushApproved']);
+
 
 
         
