@@ -149,7 +149,7 @@ Route::prefix('v1')->group(function () {
       Route::post('/timesheets/generate', [TimesheetController::class, 'generate']);
       Route::get('/timesheets/{organizationId}', [TimesheetController::class, 'index']);
       Route::post('/timesheets/{id}', [TimesheetController::class, 'update']);
-      Route::post('/timesheets/submit', [TimesheetController::class, 'submit']);
+      Route::post('/timesheets/submit', [TimesheetController::class, 'submit'])->name('timesheets.submit');
 
         
 
