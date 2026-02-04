@@ -147,8 +147,8 @@ Route::prefix('v1')->group(function () {
 
 
       Route::post('/timesheets/generate', [TimesheetController::class, 'generate']);
-      Route::get('/timesheets', [TimesheetController::class, 'index']);
-      Route::put('/timesheets/{id}', [TimesheetController::class, 'update']);
+      Route::get('/timesheets/{organizationId}', [TimesheetController::class, 'index']);
+      Route::post('/timesheets/{id}', [TimesheetController::class, 'update']);
       Route::post('/timesheets/submit', [TimesheetController::class, 'submit']);
 
         

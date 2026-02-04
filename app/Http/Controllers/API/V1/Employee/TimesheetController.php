@@ -1554,8 +1554,9 @@ class TimesheetController extends Controller
 
             // Prevent duplicate generation
             $exists = Timesheet::where('employee_id', $employee->id)
-                ->where('work_date', $request->from)
-                ->exists();
+                ->where('from_date', $request->from)
+                ->where('to_date', $request->to)
+                ->exists(); 
 
             if ($exists) continue;
 
@@ -1566,7 +1567,9 @@ class TimesheetController extends Controller
 
             Timesheet::create([
                 'employee_id' => $employee->id,
-                'work_date' => $request->from, // period start
+                'organization_id' => $orgId,
+                'from_date' => $request->from, // period start
+                'to_date' => $request->to, // period end
                 'regular_hours' => $hours,
                 'overtime_hours' => 0,
                 'status' => 'pending',
@@ -1582,17 +1585,40 @@ class TimesheetController extends Controller
     }
 
     /**
-     * List timesheets
+     * List timesheets by organization
      */
-    public function index(Request $request)
+    public function index(Request $request, $organizationId)
     {
-        $orgId = $request->organization_id;
+        try {
+            if (!$organizationId) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Organization ID is required.'
+                ], 400);
+            }
 
-        $timesheets = Timesheet::whereHas('employee', function ($q) use ($orgId) {
-            $q->where('organization_id', $orgId);
-        })->get();
+            $timesheets = Timesheet::where('organization_id', $organizationId)
+                ->with([
+                    'project:id,name',
+                    'task:id,title',
+                    'employee:id,first_name,last_name,employee_code',
+                    'attendance:id,date,check_in,check_out'
+                ])
+                ->latest()
+                ->get();
 
-        return response()->json($timesheets);
+            return response()->json([
+                'status' => true,
+                'message' => 'Timesheets retrieved successfully',
+                'data' => $timesheets
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Something went wrong.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
