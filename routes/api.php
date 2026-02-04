@@ -151,7 +151,7 @@ Route::prefix('v1')->group(function () {
 
         Route::get('/timesheets/{organizationId}', [TimesheetController::class, 'index']);
         Route::post('/timesheets/{id}', [TimesheetController::class, 'update']);
-        
+
         Route::post('/xero/timesheets/push', [XeroEmployeeController::class, 'pushApproved']);
 
 
@@ -621,7 +621,7 @@ Route::prefix('v1')->group(function () {
 
         Route::post('/xero/sync-employee', [XeroEmployeeController::class, 'sync']);
         Route::get('/xero/employees',[XeroEmployeeController::class, 'getAllFromXero']);
-        Route::post('/xero/timesheets/push',[XeroEmployeeController::class, 'push']);
+        // Route::post('/xero/timesheets/push',[XeroEmployeeController::class, 'push']);
     
            
     
