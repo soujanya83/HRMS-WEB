@@ -402,6 +402,11 @@ public function getAvailablePayPeriods(Request $request)
             ], 500);
         }
 
+        $responseData = $response->json();
+
+         Log::info('Xero Payroll Calendars Raw Response', $responseData);
+
+
         $calendars = $response->json()['PayrollCalendars'] ?? [];
         
         // Extract all pay periods from all calendars
@@ -412,8 +417,12 @@ public function getAvailablePayPeriods(Request $request)
             $periods = $calendar['CalendarPeriods'] ?? [];
             
             foreach ($periods as $period) {
-                $startDate = Carbon::parse($period['StartDate']);
-                $endDate = Carbon::parse($period['EndDate']);
+               $startDate = $this->parseXeroDate($period['StartDate'] ?? null);
+                $endDate   = $this->parseXeroDate($period['EndDate'] ?? null);
+
+                if (!$startDate || !$endDate) {
+                    continue;
+                }
                 
                 // Only show future or current periods
                 if ($endDate->isFuture() || $endDate->isToday()) {
@@ -453,6 +462,15 @@ public function getAvailablePayPeriods(Request $request)
     }
 }
 
+
+private function parseXeroDate($xeroDate)
+{
+    if (preg_match('/\/Date\((\d+)/', $xeroDate, $matches)) {
+        return Carbon::createFromTimestampMs($matches[1]);
+    }
+
+    return null;
+}
 
 
 
