@@ -180,7 +180,7 @@ Route::prefix('v1')->group(function () {
 
 
          Route::post('/xero/payruns/create', [XeroEmployeeController::class, 'create']);
-         Route::get('/xero/payruns', [XeroEmployeeController::class, 'show']);
+         Route::get('/xero/payruns', [XeroEmployeeController::class, 'show'])->name('xero.payruns');
          Route::post('/xero/payruns/{id}/approve', [XeroEmployeeController::class, 'approve']);
 
          Route::get('/xero/payslips', [XeroEmployeeController::class, 'payslips']);
