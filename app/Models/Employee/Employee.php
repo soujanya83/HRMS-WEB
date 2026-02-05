@@ -52,6 +52,11 @@ class Employee extends Model
         'visa_expiry_date',
         'emergency_contact_name',
         'emergency_contact_phone',
+        'face_embedding',
+    ];
+
+    protected $casts = [
+        'face_embedding' => 'array',
     ];
 
     // Relationships
