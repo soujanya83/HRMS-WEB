@@ -1543,7 +1543,7 @@ class TimesheetController extends Controller
 
 
 
-    public function generate(Request $request)
+   public function generate(Request $request)
 {
     $request->validate([
         'from' => 'required|date',
@@ -1565,23 +1565,32 @@ class TimesheetController extends Controller
         if ($exists) continue;
 
         // 1. Fetch Daily Attendance Records
-        $attendances = Attendance::where('employee_id', $employee->id)
+        $attendancesRaw = Attendance::where('employee_id', $employee->id)
             ->whereBetween('date', [$request->from, $request->to])
             ->get();
+
+        // ⚡ KEY FIX: Convert collection to a Key-Value pair where Key = 'Y-m-d'
+        // This ensures we can find the record regardless of whether DB is datetime or model casts
+        $attendanceLookup = $attendancesRaw->mapWithKeys(function ($item) {
+            // Force convert DB date to strict 'Y-m-d' string
+            return [\Carbon\Carbon::parse($item->date)->toDateString() => $item];
+        });
 
         // 2. Build the JSON Structure & Calculate Total
         $dailyData = [];
         $totalHours = 0;
 
-        // Create a period to ensure we have a key for EVERY day (even if 0 hours)
         $period = CarbonPeriod::create($request->from, $request->to);
 
         foreach ($period as $date) {
-            $dateStr = $date->toDateString();
+            $dateStr = $date->toDateString(); // "2026-02-01"
             
-            // Find attendance for this specific day
-            $dayRecord = $attendances->where('date', $dateStr)->first();
-            $dayHours = $dayRecord ? (float) $dayRecord->total_work_hours : 0;
+            // Check strictly by the string key we created above
+            if (isset($attendanceLookup[$dateStr])) {
+                $dayHours = (float) $attendanceLookup[$dateStr]->total_work_hours;
+            } else {
+                $dayHours = 0;
+            }
 
             $dailyData[$dateStr] = $dayHours;
             $totalHours += $dayHours;
@@ -1592,8 +1601,8 @@ class TimesheetController extends Controller
             'organization_id' => $orgId,
             'from_date' => $request->from,
             'to_date' => $request->to,
-            'regular_hours' => $totalHours, // Total sum
-            'daily_breakdown' => $dailyData, // 👈 NEW: Stores {'2025-02-01': 8, ...}
+            'regular_hours' => $totalHours,
+            'daily_breakdown' => $dailyData,
             'overtime_hours' => 0,
             'status' => 'pending',
         ]);
