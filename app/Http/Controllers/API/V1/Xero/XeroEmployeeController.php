@@ -505,6 +505,7 @@ public function pushApproved(Request $request)
                     'start_date'      => $period['start_date'],
                 ],
                 [
+                    'calendar_id'     => $period['calendar_id'], // 👈 THIS WAS MISSING
                     'calendar_type'   => $period['calendar_type'],
                     'end_date'        => $period['end_date'],
                     'number_of_days'  => $period['number_of_days'],
