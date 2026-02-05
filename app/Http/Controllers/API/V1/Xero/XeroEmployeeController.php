@@ -685,17 +685,17 @@ public function getAvailablePayPeriods(Request $request)
 
                 if ($currentPeriod) {
                     // Current
-                    $allPayPeriods[] = $this->formatPeriod($currentPeriod, $name, $type, true, 'Current');
+                    $allPayPeriods[] = $this->formatPeriod($currentPeriod,  $name, $type, $calendarId, true, 'Current');
 
                     // Future (Next 1)
                     $nextPeriod = $this->calculateNextPeriod($currentPeriod['start'], $type);
-                    $allPayPeriods[] = $this->formatPeriod($nextPeriod, $name, $type, false, 'Future');
+                    $allPayPeriods[] = $this->formatPeriod($nextPeriod, $name,  $type, $calendarId, false, 'Future');
 
                     // Past (Last 3)
                     $tempStart = $currentPeriod['start'];
                     for ($i = 1; $i <= 3; $i++) {
                         $pastPeriod = $this->calculatePreviousPeriod($tempStart, $type);
-                        $allPayPeriods[] = $this->formatPeriod($pastPeriod, $name, $type, false, 'Past');
+                        $allPayPeriods[] = $this->formatPeriod($pastPeriod, $name, $type, $calendarId, false, 'Past');
                         $tempStart = $pastPeriod['start'];
                     }
                 }
