@@ -11,6 +11,7 @@ class manually_adjusted_attendance extends Model
     public $timestamps = false;
     protected $fillable = [
         'employee_id',
+        'organization_id',
         'date',
         'original_check_in',
         'original_check_out',

@@ -13,10 +13,12 @@ class Timesheet extends Model
     use HasFactory;
 
     protected $fillable = [
+        'organization_id',
         'attendance_id',
         'project_id',
         'task_id',
-        'work_date',
+        'from_date',
+        'to_date',
         'regular_hours',
         'overtime_hours',
         'is_overtime',

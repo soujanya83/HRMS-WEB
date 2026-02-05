@@ -23,6 +23,7 @@ use App\Models\Payrolls;
 use App\Models\XeroPayRun;
 
 
+
 class TimesheetController extends Controller
 {
     public function store(Request $request): JsonResponse
@@ -118,26 +119,26 @@ class TimesheetController extends Controller
     }
 
     // ✅ List all timesheets
-    public function index(): JsonResponse
-    {
-        try {
-            $timesheets = Timesheet::with([
-                'project:id,name',
-                'task:id,title',
-                'employee:id,first_name,last_name,employee_code',
-            ])->latest()->get();
+    // public function index(): JsonResponse
+    // {
+    //     try {
+    //         $timesheets = Timesheet::with([
+    //             'project:id,name',
+    //             'task:id,title',
+    //             'employee:id,first_name,last_name,employee_code',
+    //         ])->latest()->get();
 
-            return response()->json([
-                'status' => true,
-                'data' => $timesheets,
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => false,
-                'message' => $e->getMessage(),
-            ], 500);
-        }
-    }
+    //         return response()->json([
+    //             'status' => true,
+    //             'data' => $timesheets,
+    //         ]);
+    //     } catch (\Exception $e) {
+    //         return response()->json([
+    //             'status' => false,
+    //             'message' => $e->getMessage(),
+    //         ], 500);
+    //     }
+    // }
 
     // ✅ Show specific timesheet
     public function show($id): JsonResponse
@@ -169,49 +170,49 @@ class TimesheetController extends Controller
     }
 
     // ✅ Update a timesheet
-    public function update(Request $request, $id): JsonResponse
-    {
-        try {
-            $timesheet = Timesheet::find($id);
+    // public function update(Request $request, $id): JsonResponse
+    // {
+    //     try {
+    //         $timesheet = Timesheet::find($id);
 
-            if (!$timesheet) {
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Timesheet not found.',
-                ], 404);
-            }
+    //         if (!$timesheet) {
+    //             return response()->json([
+    //                 'status' => false,
+    //                 'message' => 'Timesheet not found.',
+    //             ], 404);
+    //         }
 
-            $validator = Validator::make($request->all(), [
-                'project_id' => 'sometimes|exists:projects,id',
-                'task_id' => 'nullable|exists:tasks,id',
-                'employee_id' => 'sometimes|exists:employees,id',
-                'date' => 'nullable|date',
-                'hours' => 'nullable|numeric|min:0|max:24',
-                'description' => 'nullable|string',
-                'status' => 'nullable|in:submitted,approved,rejected',
-            ]);
+    //         $validator = Validator::make($request->all(), [
+    //             'project_id' => 'sometimes|exists:projects,id',
+    //             'task_id' => 'nullable|exists:tasks,id',
+    //             'employee_id' => 'sometimes|exists:employees,id',
+    //             'date' => 'nullable|date',
+    //             'hours' => 'nullable|numeric|min:0|max:24',
+    //             'description' => 'nullable|string',
+    //             'status' => 'nullable|in:submitted,approved,rejected',
+    //         ]);
 
-            if ($validator->fails()) {
-                return response()->json([
-                    'status' => false,
-                    'errors' => $validator->errors(),
-                ], 422);
-            }
+    //         if ($validator->fails()) {
+    //             return response()->json([
+    //                 'status' => false,
+    //                 'errors' => $validator->errors(),
+    //             ], 422);
+    //         }
 
-            $timesheet->update($validator->validated());
+    //         $timesheet->update($validator->validated());
 
-            return response()->json([
-                'status' => true,
-                'message' => 'Timesheet updated successfully.',
-                'data' => $timesheet,
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => false,
-                'message' => $e->getMessage(),
-            ], 500);
-        }
-    }
+    //         return response()->json([
+    //             'status' => true,
+    //             'message' => 'Timesheet updated successfully.',
+    //             'data' => $timesheet,
+    //         ]);
+    //     } catch (\Exception $e) {
+    //         return response()->json([
+    //             'status' => false,
+    //             'message' => $e->getMessage(),
+    //         ], 500);
+    //     }
+    // }
 
     // ✅ Delete timesheet
     public function destroy($id): JsonResponse
@@ -1530,4 +1531,138 @@ class TimesheetController extends Controller
 
         return Carbon::createFromTimestamp($matches[0] / 1000)->toDateString();
     }
+
+
+
+    //---------------------------------------------------------------------------
+
+
+
+     public function generate(Request $request)
+    {
+        $request->validate([
+            'from' => 'required|date',
+            'to' => 'required|date',
+        ]);
+
+        $orgId = $request->organization_id;
+
+        $employees = Employee::where('organization_id', $orgId)->get();
+
+        $created = 0;
+
+        foreach ($employees as $employee) {
+
+            // Prevent duplicate generation
+            $exists = Timesheet::where('employee_id', $employee->id)
+                ->where('from_date', $request->from)
+                ->where('to_date', $request->to)
+                ->exists(); 
+
+            if ($exists) continue;
+
+            // Sum attendance hours for this employee in period
+            $hours = Attendance::where('employee_id', $employee->id)
+                ->whereBetween('date', [$request->from, $request->to])
+                ->sum('total_work_hours');
+
+            Timesheet::create([
+                'employee_id' => $employee->id,
+                'organization_id' => $orgId,
+                'from_date' => $request->from, // period start
+                'to_date' => $request->to, // period end
+                'regular_hours' => $hours,
+                'overtime_hours' => 0,
+                'status' => 'pending',
+            ]);
+
+            $created++;
+        }
+
+        return response()->json([
+            'status' => true,
+            'created' => $created
+        ]);
+    }
+
+    /**
+     * List timesheets by organization
+     */
+    public function index(Request $request, $organizationId)
+    {
+        try {
+            if (!$organizationId) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Organization ID is required.'
+                ], 400);
+            }
+
+            $timesheets = Timesheet::where('organization_id', $organizationId)
+                ->with([
+                    'project:id,name',
+                    'task:id,title',
+                    'employee:id,first_name,last_name,employee_code',
+                    'attendance:id,date,check_in,check_out'
+                ])
+                ->latest()
+                ->get();
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Timesheets retrieved successfully',
+                'data' => $timesheets
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Something went wrong.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Update single timesheet (manual edit)
+     */
+    public function update(Request $request, $id)
+    {
+        $timesheet = Timesheet::findOrFail($id);
+
+        $timesheet->update([
+            'regular_hours' => $request->regular_hours,
+            'overtime_hours' => $request->overtime_hours,
+            'remarks' => $request->remarks,
+        ]);
+
+        return response()->json(['status' => true]);
+    }
+
+    /**
+     * Submit timesheets for approval
+     */
+   public function submit(Request $request)
+{
+    $request->validate([
+        'timesheet_ids' => 'required|array',
+        'timesheet_ids.*' => 'exists:timesheets,id',
+    ]);
+
+    Timesheet::whereIn('id', $request->timesheet_ids)
+        ->update([
+            'status'       => 'submitted',
+            'approved_at'  => Carbon::now(),     // current time
+            'approved_by'  => Auth::id(),         // logged-in user id
+        ]);
+
+    return response()->json([
+        'status'  => true,
+        'message' => 'Timesheets submitted successfully'
+    ]);
+}
+
+
+
+
+
 }

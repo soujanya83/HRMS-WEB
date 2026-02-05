@@ -15,6 +15,7 @@ use App\Http\Controllers\API\V1\Recruitment\OnboardingTemplateTaskController;
 use App\Http\Controllers\API\V1\Recruitment\OnboardingAutomationController;
 use App\Http\Controllers\API\V1\Employee\EmployeeController;
 use App\Http\Controllers\API\V1\Attendance\AttendanceController;
+use App\Http\Controllers\API\V1\Attendance\ManualAttendanceController;
 use App\Http\Controllers\API\V1\Employee\LeaveController;
 use App\Http\Controllers\API\V1\Employee\EmployeeDocumentController;
 use App\Http\Controllers\API\V1\Employee\EmployeeExitController;
@@ -162,6 +163,22 @@ Route::prefix('v1')->group(function () {
         Route::post('employee/timesheet', [TimesheetController::class, 'CreateTimeSheetManually']);
         Route::post('employee/timesheet/review',[TimesheetController::class,'reviewTimesheet']);
       Route::post('employee/timesheet/payrun',[TimesheetController::class,'createPayRun']);
+
+
+
+        Route::post('/timesheets/generate', [TimesheetController::class, 'generate']);
+        Route::post('/timesheets/submit', [TimesheetController::class, 'submit'])->name('timesheets.submit');
+
+        Route::get('/timesheets/{organizationId}', [TimesheetController::class, 'index']);
+        Route::post('/timesheets/{id}', [TimesheetController::class, 'update']);
+
+        Route::post('/xero/timesheets/push', [XeroEmployeeController::class, 'pushApproved']);
+
+        Route::get('/available-pay-periods', [XeroEmployeeController::class, 'getAvailablePayPeriods']);
+
+
+
+
         
 
         Route::get('employee/payrun/{organizationId}', [PayrunController::class, 'getPayrun']);
@@ -357,6 +374,24 @@ Route::prefix('v1')->group(function () {
             Route::get('attendance/by-employee-date', [AttendanceController::class,'getByEmployeeAndDate']);
 
         });
+
+        Route::prefix('manual-attendance')->group(function(){
+
+        Route::post('/store',[ManualAttendanceController::class,'store']);
+
+        Route::get('/list/{id}',[ManualAttendanceController::class,'index']);
+
+        Route::get('/view/{id}',[ManualAttendanceController::class,'show']);
+
+        Route::post('/update/{id}',[ManualAttendanceController::class,'update']);
+
+        Route::delete('/delete/{id}',[ManualAttendanceController::class,'destroy']);
+
+        Route::post('/approve/{id}',[ManualAttendanceController::class,'approve']);
+
+        Route::post('/reject/{id}',[ManualAttendanceController::class,'reject']);
+
+    });
 
         Route::prefix('leave')->group(function () {
             Route::get('/', [LeaveController::class, 'index']);
@@ -609,7 +644,7 @@ Route::prefix('v1')->group(function () {
 
         Route::post('/xero/sync-employee', [XeroEmployeeController::class, 'sync']);
         Route::get('/xero/employees',[XeroEmployeeController::class, 'getAllFromXero']);
-        Route::post('/xero/timesheets/push',[XeroEmployeeController::class, 'push']);
+        // Route::post('/xero/timesheets/push',[XeroEmployeeController::class, 'push']);
     
            
     
