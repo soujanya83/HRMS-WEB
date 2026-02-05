@@ -843,33 +843,71 @@ public function getAvailablePayPeriods(Request $request)
 
 public function create(Request $request)
 {
+    // 1. Validation
+    $request->validate([
+        'organization_id' => 'required',
+        'from_date'       => 'required|date',
+        'to_date'         => 'required|date',
+    ]);
+
     $orgId = $request->organization_id;
 
-    $connection = XeroConnection::where('organization_id',$orgId)
-        ->where('is_active',1)->firstOrFail();
+    // 2. Find the stored Pay Period to get the Calendar ID
+    $payPeriod = \App\Models\PayPeriod::where('organization_id', $orgId)
+        ->where('start_date', $request->from_date)
+        ->where('end_date', $request->to_date)
+        ->first();
+
+    if (!$payPeriod) {
+        return response()->json([
+            'status' => false,
+            'message' => 'Pay period not found. Please sync pay periods first.'
+        ], 404);
+    }
+
+    if (!$payPeriod->calendar_id) {
+        return response()->json([
+            'status' => false,
+            'message' => 'Calendar ID missing for this period. Re-sync your pay periods.'
+        ], 422);
+    }
+
+    // 3. Xero Connection
+    $connection = XeroConnection::where('organization_id', $orgId)
+        ->where('is_active', 1)
+        ->firstOrFail();
 
     $connection = app(\App\Services\Xero\XeroTokenService::class)
         ->refreshIfNeeded($connection);
 
+    // 4. Construct Payload
+    // Xero requires an Array of objects, containing the CalendarID
     $payload = [
-        "PayRuns" => [[
-            "PayRunType" => "Scheduled"
-        ]]
+        [
+            "PayrollCalendarID" => $payPeriod->calendar_id,
+            "PayRunType"        => "Scheduled"
+        ]
     ];
 
+    // 5. Send Request
     $response = Http::withHeaders([
-        'Authorization' => 'Bearer '.$connection->access_token,
-        'Xero-Tenant-Id'=> $connection->tenant_id,
-        'Accept'=>'application/json'
-    ])->post('https://api.xero.com/payroll.xro/1.0/PayRuns',$payload);
+        'Authorization' => 'Bearer ' . $connection->access_token,
+        'Xero-Tenant-Id' => $connection->tenant_id,
+        'Accept' => 'application/json'
+    ])->post('https://api.xero.com/payroll.xro/1.0/PayRuns', $payload);
 
-    if(!$response->successful()){
-        throw new \Exception($response->body());
+    // 6. Handle Response
+    if (!$response->successful()) {
+        // Return JSON error with Xero details
+        return response()->json([
+            'status' => false,
+            'message' => 'Xero API Error',
+            'details' => $response->json()
+        ], $response->status());
     }
 
     return response()->json($response->json());
 }
-
   
      
       public function show($id)
