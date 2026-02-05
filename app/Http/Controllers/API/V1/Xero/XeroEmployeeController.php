@@ -1166,6 +1166,7 @@ public function payslips()
                     'xero_payslip_id' => $payslipId
                 ],
                 [
+                    'xero_connection_id'       => $connection->id,
                     'organization_id' => $orgId,
                     'xero_pay_run_id' => $payRun->id, // Linking to your local PayRun ID
                     'employee_xero_connection_id' => $empConnection ? $empConnection->id : null,
