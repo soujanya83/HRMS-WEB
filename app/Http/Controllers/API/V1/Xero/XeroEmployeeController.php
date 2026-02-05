@@ -990,7 +990,7 @@ public function create(Request $request)
     // }
   
      
- public function index(Request $request)
+ public function show(Request $request)
 {
     // 1. Validation
     $request->validate([
