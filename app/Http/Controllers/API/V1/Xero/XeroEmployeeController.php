@@ -415,25 +415,25 @@ public function getAvailablePayPeriods(Request $request)
 
                 $type = strtoupper($calendar['CalendarType'] ?? '');
                 $name = $calendar['Name'] ?? 'Unknown';
+                $calendarId = $calendar['PayrollCalendarID']; // 👈 1. ID Fetch की
 
                 // A. Find Current Period
                 $currentPeriod = $this->findCurrentPeriod($xeroStartDate, $type, $today);
 
                 if ($currentPeriod) {
                     // --- 1. Current Period ---
-                    $allPayPeriods[] = $this->formatPeriod($currentPeriod, $name, $type, true, 'Current');
+                    $allPayPeriods[] = $this->formatPeriod($currentPeriod, $name, $type, $calendarId, true, 'Current');
 
                     // --- 2. Future Period (Next 1) ---
                     $nextPeriod = $this->calculateNextPeriod($currentPeriod['start'], $type);
-                    $allPayPeriods[] = $this->formatPeriod($nextPeriod, $name, $type, false, 'Future');
-
+                    $allPayPeriods[] = $this->formatPeriod($nextPeriod, $name, $type, $calendarId, false, 'Future');
                     // --- 3. Past Periods (Last 3) ---
                     $tempStart = $currentPeriod['start']; // Start anchoring from current
                     
                     for ($i = 1; $i <= 3; $i++) {
                         $pastPeriod = $this->calculatePreviousPeriod($tempStart, $type);
                         
-                        $allPayPeriods[] = $this->formatPeriod($pastPeriod, $name, $type, false, 'Past');
+                        $allPayPeriods[] = $this->formatPeriod($pastPeriod, $name, $type, $calendarId, false, 'Past');
                         
                         // Update anchor for next iteration (move further back)
                         $tempStart = $pastPeriod['start'];
