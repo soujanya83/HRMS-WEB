@@ -183,6 +183,8 @@ Route::prefix('v1')->group(function () {
          Route::get('/xero/payruns', [XeroEmployeeController::class, 'show'])->name('xero.payruns');
          Route::post('/xero/payruns/{id}/approve', [XeroEmployeeController::class, 'approve']);
 
+         Route::post('/xero/payslips/sync', [XeroEmployeeController::class, 'syncPayslips']);
+
          Route::get('/xero/payslips', [XeroEmployeeController::class, 'payslips']);
 
 

@@ -19,6 +19,7 @@ use App\Services\XeroEmployeeService;
 use App\Services\XeroTimesheetService;
 use App\Models\XeroTimesheet;
 use App\Models\XeroPayRun;
+use App\Models\XeroPayslip;
 use Carbon\CarbonPeriod;
 use App\Models\PayPeriod; // Import the new model
 
@@ -1088,6 +1089,124 @@ public function payslips()
     return response()->json($response->json());
 }
 
+
+
+// इस API को call करें जब Pay Run Create/Update हो जाए
+    public function syncPayslips(Request $request)
+    {
+        $request->validate([
+            'organization_id' => 'required',
+            'xero_pay_run_id' => 'required' // Database ID or Xero ID of the PayRun
+        ]);
+
+        $orgId = $request->organization_id;
+        $payRunId = $request->xero_pay_run_id;
+
+        // 1. Fetch Local PayRun Record (to get the list of Payslip IDs)
+        $payRun = XeroPayRun::where('organization_id', $orgId)
+            ->where('xero_pay_run_id', $payRunId)
+            ->firstOrFail();
+
+        // Check if we have basic payslip data from the PayRun call
+        $basicPayslips = $payRun->xero_data['Payslips'] ?? [];
+
+        if (empty($basicPayslips)) {
+            return response()->json(['status' => false, 'message' => 'No payslips found in this Pay Run record. Sync PayRun first.']);
+        }
+
+        // 2. Setup Connection
+        $connection = XeroConnection::where('organization_id', $orgId)
+            ->where('is_active', 1)
+            ->firstOrFail();
+
+        $connection = app(\App\Services\Xero\XeroTokenService::class)
+            ->refreshIfNeeded($connection);
+
+        $syncedCount = 0;
+
+        // 3. Loop through each Payslip ID found in the PayRun
+        foreach ($basicPayslips as $basicInfo) {
+            
+            $payslipId = $basicInfo['PayslipID'];
+            
+            // --- API CALL: Get Detailed Payslip ---
+            // यह API हमें EarningsLines, DeductionLines, etc. देगी
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $connection->access_token,
+                'Xero-Tenant-Id' => $connection->tenant_id,
+                'Accept' => 'application/json'
+            ])->get("https://api.xero.com/payroll.xro/1.0/Payslip/{$payslipId}");
+
+            if (!$response->successful()) {
+                Log::error("Failed to fetch Payslip {$payslipId}");
+                continue;
+            }
+
+            $detail = $response->json()['Payslip'];
+
+            // 4. Resolve Employee
+            $empConnection = EmployeeXeroConnection::where('xero_employee_id', $detail['EmployeeID'])->first();
+            
+            // 5. Calculate Worked Hours (Sum of Earnings Units)
+            $totalHours = 0;
+            $overtimeHours = 0; // Logic can be added if you identify overtime specific rates
+            
+            if (isset($detail['EarningsLines'])) {
+                foreach ($detail['EarningsLines'] as $line) {
+                    // Check if it's a unit-based earning (like Hours)
+                    if (isset($line['NumberOfUnits'])) {
+                        $totalHours += (float) $line['NumberOfUnits'];
+                    }
+                }
+            }
+
+            // 6. Save to Database
+            XeroPayslip::updateOrCreate(
+                [
+                    'xero_payslip_id' => $payslipId
+                ],
+                [
+                    'organization_id' => $orgId,
+                    'xero_pay_run_id' => $payRun->id, // Linking to your local PayRun ID
+                    'employee_xero_connection_id' => $empConnection ? $empConnection->id : null,
+                    'xero_employee_id' => $detail['EmployeeID'],
+                    
+                    // Financials
+                    'wages' => $detail['Wages'] ?? 0,
+                    'tax_deducted' => $detail['Tax'] ?? 0,
+                    'super_deducted' => $detail['Super'] ?? 0,
+                    'net_pay' => $detail['NetPay'] ?? 0,
+                    'total_earnings' => $detail['Wages'] ?? 0, // Usually Wages = Earnings unless reimbursements differ
+                    'total_deductions' => $detail['Deductions'] ?? 0,
+                    'reimbursements' => $detail['Reimbursements'] ?? 0,
+                    
+                    // Calculated Fields
+                    'hours_worked' => $totalHours,
+                    
+                    // JSON Line Items (Directly saving array)
+                    'earnings_lines' => $detail['EarningsLines'] ?? [],
+                    'deduction_lines' => $detail['DeductionLines'] ?? [],
+                    'leave_lines' => $detail['LeaveAccrualLines'] ?? [], // Xero calls it LeaveAccrualLines
+                    'reimbursement_lines' => $detail['ReimbursementLines'] ?? [],
+                    'super_lines' => $detail['SuperannuationLines'] ?? [],
+                    
+                    'xero_data' => $detail,
+                    'is_synced' => true,
+                    'last_synced_at' => now(),
+                ]
+            );
+
+            $syncedCount++;
+        }
+
+        // Optional: Update employee count in PayRun
+        $payRun->update(['employee_count' => $syncedCount]);
+
+        return response()->json([
+            'status' => true, 
+            'message' => "Synced {$syncedCount} payslips successfully"
+        ]);
+    }
 
 
 
