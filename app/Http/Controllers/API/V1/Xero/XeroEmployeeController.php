@@ -137,7 +137,7 @@ public function pushApproved(Request $request)
     }
 
     // ----------------------------------------------------
-    // XERO CONNECTION
+    // 1. XERO CONNECTION
     // ----------------------------------------------------
     try {
         $connection = XeroConnection::where('organization_id', $orgId)
@@ -161,7 +161,7 @@ public function pushApproved(Request $request)
     }
 
     // ----------------------------------------------------
-    // TOKEN REFRESH
+    // 2. TOKEN REFRESH
     // ----------------------------------------------------
     $connection = app(\App\Services\Xero\XeroTokenService::class)
         ->refreshIfNeeded($connection);
@@ -169,7 +169,7 @@ public function pushApproved(Request $request)
     Log::info('Xero token checked/refreshed');
 
     // ----------------------------------------------------
-    // FETCH TIMESHEETS
+    // 3. FETCH TIMESHEETS
     // ----------------------------------------------------
     $timesheets = Timesheet::where('organization_id', $orgId)
         ->where('status', 'submitted')
@@ -187,14 +187,14 @@ public function pushApproved(Request $request)
     ]);
 
     // ----------------------------------------------------
-    // COUNTERS
+    // 4. COUNTERS
     // ----------------------------------------------------
     $created = 0;
     $skippedNoXeroEmployee = 0;
     $xeroFailed = 0;
 
     // ----------------------------------------------------
-    // LOOP PER EMPLOYEE
+    // 5. LOOP PER EMPLOYEE
     // ----------------------------------------------------
     foreach ($timesheets as $employeeId => $rows) {
 
@@ -217,52 +217,69 @@ public function pushApproved(Request $request)
         }
 
         // ------------------------------------------------
-        // DATE RANGE (PAY PERIOD)
+        // GET TIMESHEET DATA
         // ------------------------------------------------
-        $startDate = Carbon::parse($rows->first()->from_date)->toDateString();
-        $endDate   = Carbon::parse($rows->first()->to_date)->toDateString();
+        // We take the first row (since grouped by employee) to get the dates & JSON
+        $mainRecord = $rows->first(); 
 
+        $startDate = Carbon::parse($mainRecord->from_date)->toDateString();
+        $endDate   = Carbon::parse($mainRecord->to_date)->toDateString();
+        
         // ------------------------------------------------
-        // BUILD DAILY HOURS ARRAY (MANDATORY FOR XERO)
+        // ⚡ BUILD DAILY HOURS ARRAY (FROM JSON)
         // ------------------------------------------------
+        // 1. Get the JSON data (ensure your model casts this to array, or use json_decode)
+        $savedDailyData = $mainRecord->daily_breakdown; 
+        
+        // Safety check: if it's a string (old Laravel versions), decode it
+        if (is_string($savedDailyData)) {
+            $savedDailyData = json_decode($savedDailyData, true);
+        }
+        if (!is_array($savedDailyData)) {
+            $savedDailyData = [];
+        }
+
+        // 2. Create the period loop to ensure order is perfect (Day 1 to Day 14)
         $period = CarbonPeriod::create($startDate, $endDate);
         $dailyHours = [];
 
         foreach ($period as $date) {
-            // Example logic: weekdays = hours, weekends = 0
-            $hours = $rows->sum('regular_hours') / $period->count();
+            $dateStr = $date->toDateString();
 
-            // Round to quarter hours (safe for Xero)
-            $hours = round($hours * 4) / 4;
+            // Look up the exact value from the JSON
+            if (isset($savedDailyData[$dateStr])) {
+                $hours = (float) $savedDailyData[$dateStr];
+            } else {
+                $hours = 0;
+            }
 
-            $dailyHours[] = $date->isWeekday() ? $hours : 0;
+            // Xero needs a simple list of numbers: [8.0, 8.88, 0, ...]
+            $dailyHours[] = $hours;
         }
 
-        Log::info('Daily hours calculated', [
+        Log::info('Daily hours prepared for Xero', [
             'employee_id' => $employeeId,
-            'days' => count($dailyHours),
-            'hours_array' => $dailyHours
+            'start_date' => $startDate,
+            'daily_hours' => $dailyHours
         ]);
 
         // ------------------------------------------------
         // PAYLOAD
         // ------------------------------------------------
-        
-
         $payload = [
-    [
-        'EmployeeID' => $empXero->xero_employee_id,
-        'StartDate' => $startDate,
-        'EndDate' => $endDate,
-        'TimesheetLines' => [
             [
-                'EarningsRateID' => $empXero->OrdinaryEarningsRateID,
-                'NumberOfUnits' => $dailyHours,
+                'EmployeeID' => $empXero->xero_employee_id,
+                'StartDate' => $startDate,
+                'EndDate' => $endDate,
+                'Status' => 'DRAFT', // Usually safer to push as DRAFT first
+                'TimesheetLines' => [
+                    [
+                        'EarningsRateID' => $empXero->OrdinaryEarningsRateID,
+                        'NumberOfUnits' => $dailyHours, // 👈 The array we just built
+                    ]
+                ]
             ]
-        ]
-    ]
-];
-        
+        ];
 
         Log::info('Xero timesheet payload prepared', [
             'employee_id' => $employeeId,
@@ -295,9 +312,12 @@ public function pushApproved(Request $request)
         }
 
         // ------------------------------------------------
-        // SUCCESS
+        // SUCCESS HANDLING
         // ------------------------------------------------
-        $xero = $response->json()['Timesheets'][0] ?? null;
+        $xeroResponse = $response->json();
+        
+        // Xero returns { "Timesheets": [ ... ] }
+        $xero = $xeroResponse['Timesheets'][0] ?? null;
 
         if (!$xero || !isset($xero['TimesheetID'])) {
             Log::error('Xero response missing TimesheetID', [
@@ -323,6 +343,7 @@ public function pushApproved(Request $request)
             'last_synced_at' => now(),
         ]);
 
+        // Mark local timesheets as pushed
         Timesheet::whereIn('id', $rows->pluck('id'))->update([
             'xero_synced_at' => now(),
             'xero_status' => 'pushed'
@@ -353,7 +374,6 @@ public function pushApproved(Request $request)
         'xero_failed' => $xeroFailed
     ]);
 }
-
 
 
 

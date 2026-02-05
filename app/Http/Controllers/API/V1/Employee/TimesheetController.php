@@ -1657,30 +1657,78 @@ class TimesheetController extends Controller
      */
  public function update(Request $request, $id)
 {
+    $request->validate([
+        'daily_breakdown' => 'nullable|array',
+        'regular_hours'   => 'nullable|numeric',
+        'overtime_hours'  => 'nullable|numeric',
+        'remarks'         => 'nullable|string',
+    ]);
+
     $timesheet = Timesheet::findOrFail($id);
 
     $data = [
         'overtime_hours' => $request->overtime_hours,
-        'remarks' => $request->remarks,
+        'remarks'        => $request->remarks,
     ];
 
-    // If frontend sends updated daily breakdown (Recommended)
+    // SCENARIO 1: Frontend sends exact daily data (BEST)
     if ($request->has('daily_breakdown')) {
         $data['daily_breakdown'] = $request->daily_breakdown;
-        // Recalculate total regular hours from the breakdown to keep them in sync
-        $data['regular_hours'] = array_sum($request->daily_breakdown); 
+        
+        // Always trust the breakdown sum over any manual total
+        $data['regular_hours'] = array_sum($request->daily_breakdown);
     } 
-    // Fallback: If they only update total hours, we can't easily update daily breakdown
-    // So we assume this only happens if they don't have daily editing UI.
+    // SCENARIO 2: Frontend only sends total hours (FALLBACK)
+    // We must generate a fake breakdown so Xero doesn't receive 0s
     elseif ($request->has('regular_hours')) {
-        $data['regular_hours'] = $request->regular_hours;
+        $newTotal = (float) $request->regular_hours;
+        $data['regular_hours'] = $newTotal;
+
+        // Automatically distribute these hours across weekdays
+        $data['daily_breakdown'] = $this->distributeHoursEvenly(
+            $timesheet->from_date, 
+            $timesheet->to_date, 
+            $newTotal
+        );
     }
 
     $timesheet->update($data);
 
-    return response()->json(['status' => true]);
+    return response()->json([
+        'status' => true, 
+        'message' => 'Timesheet updated successfully',
+        'new_total' => $data['regular_hours'] ?? $timesheet->regular_hours
+    ]);
 }
 
+/**
+ * Helper to spread total hours across weekdays
+ */
+private function distributeHoursEvenly($start, $end, $totalHours)
+{
+    $period = \Carbon\CarbonPeriod::create($start, $end);
+    $weekdays = 0;
+    $dailyData = [];
+
+    // 1. Count Weekdays
+    foreach ($period as $date) {
+        if ($date->isWeekday()) {
+            $weekdays++;
+        }
+    }
+
+    // 2. Calculate Hours Per Day
+    $perDay = $weekdays > 0 ? round($totalHours / $weekdays, 2) : 0;
+    
+    // 3. Fill Array
+    foreach ($period as $date) {
+        $dateStr = $date->toDateString();
+        // Give hours to weekdays, 0 to weekends
+        $dailyData[$dateStr] = $date->isWeekday() ? $perDay : 0;
+    }
+
+    return $dailyData;
+}
     /**
      * Submit timesheets for approval
      */
