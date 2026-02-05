@@ -55,6 +55,8 @@ use App\Http\Controllers\API\V1\EmploymentTypeController;
 use App\Http\Controllers\API\V1\Xero\PayrunController;
 use App\Http\Controllers\API\V1\Xero\XeroConnectionController;
 use App\Http\Controllers\API\V1\Xero\XeroEmployeeController;
+use App\Http\Controllers\API\V1\ProfilePinController;
+use App\Http\Controllers\API\V1\Employee\FaceController;
 
 use App\Http\Controllers\API\V1\{
     RoleController,
@@ -75,6 +77,24 @@ Route::prefix('v1')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
 
+
+    // Profile Pin APIs
+    Route::prefix('profile-pin')->group(function () {
+        // Public endpoints
+        Route::post('/forgot', [ProfilePinController::class, 'forgotPin']);
+        Route::post('/verify-otp-reset', [ProfilePinController::class, 'verifyOtpAndResetPin']);
+        // Authenticated endpoints
+        Route::middleware('auth:sanctum')->group(function () {
+            Route::post('/create', [ProfilePinController::class, 'createPin']);
+            Route::post('/verify', [ProfilePinController::class, 'verifyPin']);
+        });
+    });
+
+    // Face Embedding APIs
+    Route::post('/employees/register-face', [FaceController::class, 'register']);
+    Route::get('/faces', [FaceController::class, 'index']);
+
+    
     Route::middleware('auth:sanctum')->group(function () {
 
          Route::get('/xero/connect', [XeroConnectionController::class, 'connect']);
