@@ -464,9 +464,10 @@ public function getAvailablePayPeriods(Request $request)
     /**
      * Helper to format the array for response/storage
      */
-    private function formatPeriod($periodData, $name, $type, $isCurrent, $statusTag)
+    private function formatPeriod($periodData, $name, $type, $id, $isCurrent, $statusTag)
     {
         return [
+            'calendar_id'   => $id, // 👈 Store here
             'calendar_name' => $name,
             'calendar_type' => $type,
             'start_date' => $periodData['start']->toDateString(),
@@ -509,6 +510,7 @@ public function getAvailablePayPeriods(Request $request)
                     'start_date'      => $period['start_date'],
                 ],
                 [
+                    'calendar_id'     => $period['calendar_id'], // 👈 Saving to DB
                     'calendar_type'   => $period['calendar_type'],
                     'end_date'        => $period['end_date'],
                     'number_of_days'  => $period['number_of_days'],
@@ -676,6 +678,7 @@ public function getAvailablePayPeriods(Request $request)
 
                 $type = strtoupper($calendar['CalendarType'] ?? '');
                 $name = $calendar['Name'] ?? 'Unknown';
+                $calendarId = $calendar['PayrollCalendarID']; // 👈 1. ID Fetch की
 
                 // 1. Find Current Period
                 $currentPeriod = $this->findCurrentPeriod($xeroStartDate, $type, $today);

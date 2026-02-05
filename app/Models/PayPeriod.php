@@ -10,6 +10,7 @@ class PayPeriod extends Model
 
     protected $fillable = [
         'organization_id',
+        'calendar_id',
         'calendar_name',
         'calendar_type',
         'start_date',
