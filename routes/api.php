@@ -177,6 +177,14 @@ Route::prefix('v1')->group(function () {
         Route::get('/available-pay-periods', [XeroEmployeeController::class, 'getAvailablePayPeriods']);
         Route::get('/pay-periods', [XeroEmployeeController::class, 'get_all_pay_periods']);
 
+        
+
+         Route::post('/xero/payruns/create', [XeroEmployeeController::class, 'create']);
+         Route::get('/xero/payruns/{id}', [XeroEmployeeController::class, 'show']);
+         Route::post('/xero/payruns/{id}/approve', [XeroEmployeeController::class, 'approve']);
+
+         Route::get('/xero/payslips', [XeroEmployeeController::class, 'payslips']);
+
 
 
 

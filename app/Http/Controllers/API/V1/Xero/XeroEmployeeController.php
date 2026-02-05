@@ -830,6 +830,94 @@ public function getAvailablePayPeriods(Request $request)
     // }
 
 
+//-----------------------------------------------------------------------------------------------------------
+
+//payrun and payslip controllers will be added here in the future
+
+
+public function create(Request $request)
+{
+    $orgId = $request->organization_id;
+
+    $connection = XeroConnection::where('organization_id',$orgId)
+        ->where('is_active',1)->firstOrFail();
+
+    $connection = app(\App\Services\Xero\XeroTokenService::class)
+        ->refreshIfNeeded($connection);
+
+    $payload = [
+        "PayRuns" => [[
+            "PayRunType" => "Scheduled"
+        ]]
+    ];
+
+    $response = Http::withHeaders([
+        'Authorization' => 'Bearer '.$connection->access_token,
+        'Xero-Tenant-Id'=> $connection->tenant_id,
+        'Accept'=>'application/json'
+    ])->post('https://api.xero.com/payroll.xro/1.0/PayRuns',$payload);
+
+    if(!$response->successful()){
+        throw new \Exception($response->body());
+    }
+
+    return response()->json($response->json());
+}
+
+  
+     
+      public function show($id)
+{
+    $connection = XeroConnection::where('is_active',1)->firstOrFail();
+
+    $connection = app(\App\Services\Xero\XeroTokenService::class)
+        ->refreshIfNeeded($connection);
+
+    $response = Http::withHeaders([
+        'Authorization'=>'Bearer '.$connection->access_token,
+        'Xero-Tenant-Id'=>$connection->tenant_id
+    ])->get("https://api.xero.com/payroll.xro/1.0/PayRuns/$id");
+
+    return response()->json($response->json());
+}
+
+
+  public function approve($id)
+{
+    $connection = XeroConnection::where('is_active',1)->firstOrFail();
+
+    $connection = app(\App\Services\Xero\XeroTokenService::class)
+        ->refreshIfNeeded($connection);
+
+    $response = Http::withHeaders([
+        'Authorization'=>'Bearer '.$connection->access_token,
+        'Xero-Tenant-Id'=>$connection->tenant_id,
+        'Accept'=>'application/json'
+    ])->post("https://api.xero.com/payroll.xro/1.0/PayRuns/$id/approve");
+
+    return response()->json($response->json());
+}
+
+
+
+  
+public function payslips()
+{
+    $connection = XeroConnection::where('is_active',1)->firstOrFail();
+
+    $connection = app(\App\Services\Xero\XeroTokenService::class)
+        ->refreshIfNeeded($connection);
+
+    $response = Http::withHeaders([
+        'Authorization'=>'Bearer '.$connection->access_token,
+        'Xero-Tenant-Id'=>$connection->tenant_id
+    ])->get('https://api.xero.com/payroll.xro/1.0/Payslips');
+
+    return response()->json($response->json());
+}
+
+
+
 
 
 
