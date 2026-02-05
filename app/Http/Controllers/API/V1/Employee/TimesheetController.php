@@ -14,6 +14,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Carbon;
+use Carbon\CarbonPeriod;
 use App\Models\XeroConnection;
 use App\Models\EmployeeXeroConnection;
 use App\Models\XeroTimesheet;
@@ -21,6 +22,10 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\Payrolls;
 use App\Models\XeroPayRun;
+use App\Models\XeroPayRunEmployee;
+use App\Models\XeroPayRunEmployeeTimesheet;
+use App\Models\PayPeriod;
+use App\Models\Project;
 
 
 
@@ -1538,53 +1543,69 @@ class TimesheetController extends Controller
 
 
 
-     public function generate(Request $request)
-    {
-        $request->validate([
-            'from' => 'required|date',
-            'to' => 'required|date',
-        ]);
+    public function generate(Request $request)
+{
+    $request->validate([
+        'from' => 'required|date',
+        'to' => 'required|date',
+    ]);
 
-        $orgId = $request->organization_id;
+    $orgId = $request->organization_id;
+    $employees = Employee::where('organization_id', $orgId)->get();
+    $created = 0;
 
-        $employees = Employee::where('organization_id', $orgId)->get();
+    foreach ($employees as $employee) {
 
-        $created = 0;
+        // Prevent duplicate generation
+        $exists = Timesheet::where('employee_id', $employee->id)
+            ->where('from_date', $request->from)
+            ->where('to_date', $request->to)
+            ->exists(); 
 
-        foreach ($employees as $employee) {
+        if ($exists) continue;
 
-            // Prevent duplicate generation
-            $exists = Timesheet::where('employee_id', $employee->id)
-                ->where('from_date', $request->from)
-                ->where('to_date', $request->to)
-                ->exists(); 
+        // 1. Fetch Daily Attendance Records
+        $attendances = Attendance::where('employee_id', $employee->id)
+            ->whereBetween('date', [$request->from, $request->to])
+            ->get();
 
-            if ($exists) continue;
+        // 2. Build the JSON Structure & Calculate Total
+        $dailyData = [];
+        $totalHours = 0;
 
-            // Sum attendance hours for this employee in period
-            $hours = Attendance::where('employee_id', $employee->id)
-                ->whereBetween('date', [$request->from, $request->to])
-                ->sum('total_work_hours');
+        // Create a period to ensure we have a key for EVERY day (even if 0 hours)
+        $period = CarbonPeriod::create($request->from, $request->to);
 
-            Timesheet::create([
-                'employee_id' => $employee->id,
-                'organization_id' => $orgId,
-                'from_date' => $request->from, // period start
-                'to_date' => $request->to, // period end
-                'regular_hours' => $hours,
-                'overtime_hours' => 0,
-                'status' => 'pending',
-            ]);
+        foreach ($period as $date) {
+            $dateStr = $date->toDateString();
+            
+            // Find attendance for this specific day
+            $dayRecord = $attendances->where('date', $dateStr)->first();
+            $dayHours = $dayRecord ? (float) $dayRecord->total_work_hours : 0;
 
-            $created++;
+            $dailyData[$dateStr] = $dayHours;
+            $totalHours += $dayHours;
         }
 
-        return response()->json([
-            'status' => true,
-            'created' => $created
+        Timesheet::create([
+            'employee_id' => $employee->id,
+            'organization_id' => $orgId,
+            'from_date' => $request->from,
+            'to_date' => $request->to,
+            'regular_hours' => $totalHours, // Total sum
+            'daily_breakdown' => $dailyData, // 👈 NEW: Stores {'2025-02-01': 8, ...}
+            'overtime_hours' => 0,
+            'status' => 'pending',
         ]);
+
+        $created++;
     }
 
+    return response()->json([
+        'status' => true,
+        'created' => $created
+    ]);
+}
     /**
      * List timesheets by organization
      */
@@ -1625,18 +1646,31 @@ class TimesheetController extends Controller
     /**
      * Update single timesheet (manual edit)
      */
-    public function update(Request $request, $id)
-    {
-        $timesheet = Timesheet::findOrFail($id);
+ public function update(Request $request, $id)
+{
+    $timesheet = Timesheet::findOrFail($id);
 
-        $timesheet->update([
-            'regular_hours' => $request->regular_hours,
-            'overtime_hours' => $request->overtime_hours,
-            'remarks' => $request->remarks,
-        ]);
+    $data = [
+        'overtime_hours' => $request->overtime_hours,
+        'remarks' => $request->remarks,
+    ];
 
-        return response()->json(['status' => true]);
+    // If frontend sends updated daily breakdown (Recommended)
+    if ($request->has('daily_breakdown')) {
+        $data['daily_breakdown'] = $request->daily_breakdown;
+        // Recalculate total regular hours from the breakdown to keep them in sync
+        $data['regular_hours'] = array_sum($request->daily_breakdown); 
+    } 
+    // Fallback: If they only update total hours, we can't easily update daily breakdown
+    // So we assume this only happens if they don't have daily editing UI.
+    elseif ($request->has('regular_hours')) {
+        $data['regular_hours'] = $request->regular_hours;
     }
+
+    $timesheet->update($data);
+
+    return response()->json(['status' => true]);
+}
 
     /**
      * Submit timesheets for approval

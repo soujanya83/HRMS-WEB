@@ -247,17 +247,7 @@ public function pushApproved(Request $request)
         // ------------------------------------------------
         // PAYLOAD
         // ------------------------------------------------
-        // $payload = [
-        //     "Timesheets" => [[
-        //         "EmployeeID" => $empXero->xero_employee_id,
-        //         "StartDate" => $startDate,
-        //         "EndDate" => $endDate,
-        //         "TimesheetLines" => [[
-        //             "EarningsRateID" => $empXero->OrdinaryEarningsRateID,
-        //             "NumberOfUnits" => $dailyHours
-        //         ]]
-        //     ]]
-        // ];
+        
 
         $payload = [
     [
