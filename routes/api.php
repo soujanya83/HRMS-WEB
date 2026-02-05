@@ -175,6 +175,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/xero/timesheets/push', [XeroEmployeeController::class, 'pushApproved']);
 
         Route::get('/available-pay-periods', [XeroEmployeeController::class, 'getAvailablePayPeriods']);
+        Route::get('/pay-periods', [XeroEmployeeController::class, 'get_all_pay_periods']);
 
 
 
