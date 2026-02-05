@@ -185,7 +185,11 @@ Route::prefix('v1')->group(function () {
 
          Route::post('/xero/payslips/sync', [XeroEmployeeController::class, 'syncPayslips']);
 
-         Route::get('/xero/payslips', [XeroEmployeeController::class, 'payslips']);
+                 Route::get('/xero/payslips', [XeroEmployeeController::class, 'payslipget']);
+
+            Route::get('/xero/payslips/{id}', [XeroEmployeeController::class, 'employeeshow']);
+
+        //  Route::get('/xero/payslips', [XeroEmployeeController::class, 'payslips']);
 
 
 

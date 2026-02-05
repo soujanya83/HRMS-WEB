@@ -1212,5 +1212,60 @@ public function payslips()
 
 
 
+    public function payslipget(Request $request)
+{
+    // 1. Query Builder Start
+    // "with" ka use karein taaki Employee ka naam aur PayRun ki date bhi aa jaye
+    $query = XeroPayslip::with(['employeeConnection.employee', 'payRun']);
+
+    // ----------------------------------------------------
+    // CASE A: Filter by Pay Run (HR View)
+    // ----------------------------------------------------
+    // Example: ?xero_pay_run_id=5 (Database ID)
+    if ($request->has('xero_pay_run_id')) {
+        $query->where('xero_pay_run_id', $request->xero_pay_run_id);
+    }
+
+    // ----------------------------------------------------
+    // CASE B: Filter by Employee (Employee History)
+    // ----------------------------------------------------
+    // Example: ?employee_id=12 (Local Employee ID)
+    if ($request->has('employee_id')) {
+        $query->whereHas('employeeConnection', function ($q) use ($request) {
+            $q->where('employee_id', $request->employee_id);
+        });
+    }
+
+    // ----------------------------------------------------
+    // CASE C: Filter by Date Range (Optional)
+    // ----------------------------------------------------
+    if ($request->has('from_date') && $request->has('to_date')) {
+        // Hum PayRun ki payment date check karenge
+        $query->whereHas('payRun', function ($q) use ($request) {
+            $q->whereBetween('payment_date', [$request->from_date, $request->to_date]);
+        });
+    }
+
+    // 3. Sorting & Pagination
+    $payslips = $query->orderByDesc('id')->paginate(15);
+
+    return response()->json([
+        'status' => true,
+        'data' => $payslips
+    ]);
+}
+
+// Single Payslip Details (Print View ke liye)
+public function employeeshow($id)
+{
+    $payslip = XeroPayslip::with(['employeeConnection.employee', 'payRun'])
+        ->findOrFail($id);
+
+    return response()->json([
+        'status' => true,
+        'data' => $payslip
+    ]);
+}
+
 
    }
