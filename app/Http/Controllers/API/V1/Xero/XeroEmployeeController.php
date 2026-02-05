@@ -371,24 +371,18 @@ public function getAvailablePayPeriods(Request $request)
     {
         $orgId = $request->organization_id;
 
-        // 1. Xero connection check
+        // Xero connection setup...
         $connection = XeroConnection::where('organization_id', $orgId)
             ->where('is_active', 1)
             ->first();
 
         if (!$connection) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Xero not connected'
-            ], 404);
+            return response()->json(['status' => false, 'message' => 'Xero not connected'], 404);
         }
 
-        // 2. Token refresh
-        $connection = app(\App\Services\Xero\XeroTokenService::class)
-            ->refreshIfNeeded($connection);
+        $connection = app(\App\Services\Xero\XeroTokenService::class)->refreshIfNeeded($connection);
 
         try {
-            // 3. Fetch ONLY the Calendars (This is the only valid endpoint for AU config)
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $connection->access_token,
                 'Xero-Tenant-Id' => $connection->tenant_id,
@@ -396,122 +390,168 @@ public function getAvailablePayPeriods(Request $request)
             ])->get('https://api.xero.com/payroll.xro/1.0/PayrollCalendars');
 
             if (!$response->successful()) {
-                Log::error('Xero API Error', ['body' => $response->body()]);
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Failed to fetch pay calendars from Xero: ' . $response->status()
-                ], $response->status());
+                return response()->json(['status' => false, 'message' => 'Failed to fetch calendars'], 500);
             }
 
             $calendars = $response->json()['PayrollCalendars'] ?? [];
             $allPayPeriods = [];
+            $today = Carbon::now();
 
             foreach ($calendars as $calendar) {
-                // Xero gives us the StartDate of the *next* pay run.
                 $xeroStartDate = $this->parseXeroDate($calendar['StartDate'] ?? null);
-                
                 if (!$xeroStartDate) continue;
 
                 $type = strtoupper($calendar['CalendarType'] ?? '');
                 $name = $calendar['Name'] ?? 'Unknown';
 
-                // We can generate the specific dates based on the type
-                $period = $this->calculatePeriodDates($xeroStartDate, $type);
+                // ✨ MAGIC FIX: Project this date forward until it catches up to Today
+                $currentPeriod = $this->findCurrentPeriod($xeroStartDate, $type, $today);
 
-                if ($period) {
+                if ($currentPeriod) {
                     $allPayPeriods[] = [
                         'calendar_name' => $name,
                         'calendar_type' => $type,
-                        'start_date' => $period['start']->toDateString(),
-                        'end_date'   => $period['end']->toDateString(),
-                        'start_date_formatted' => $period['start']->format('d M Y'),
-                        'end_date_formatted'   => $period['end']->format('d M Y'),
-                        'number_of_days' => $period['days'],
+                        // Return the Calculated Current Period
+                        'start_date' => $currentPeriod['start']->toDateString(),
+                        'end_date'   => $currentPeriod['end']->toDateString(),
+                        'start_date_formatted' => $currentPeriod['start']->format('d M Y'),
+                        'end_date_formatted'   => $currentPeriod['end']->format('d M Y'),
+                        'number_of_days' => $currentPeriod['days'],
+                        'is_current' => true
+                    ];
+
+                    // Optional: If you also want the NEXT period (Future)
+                    $nextPeriod = $this->calculateNextPeriod($currentPeriod['start'], $type);
+                    $allPayPeriods[] = [
+                        'calendar_name' => $name . ' (Next)',
+                        'calendar_type' => $type,
+                        'start_date' => $nextPeriod['start']->toDateString(),
+                        'end_date'   => $nextPeriod['end']->toDateString(),
+                        'start_date_formatted' => $nextPeriod['start']->format('d M Y'),
+                        'end_date_formatted'   => $nextPeriod['end']->format('d M Y'),
+                        'number_of_days' => $nextPeriod['days'],
+                        'is_current' => false
                     ];
                 }
             }
 
-            // Sort by start date (newest first)
-            usort($allPayPeriods, function ($a, $b) {
-                return strtotime($b['start_date']) - strtotime($a['start_date']);
-            });
-
             return response()->json([
                 'status' => true,
                 'pay_periods' => $allPayPeriods,
-                'message' => 'Periods calculated successfully'
+                'message' => 'Current and future periods calculated'
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error fetching pay periods', ['error' => $e->getMessage()]);
-            return response()->json([
-                'status' => false,
-                'message' => 'Internal Error: ' . $e->getMessage()
-            ], 500);
+            return response()->json(['status' => false, 'message' => 'Error: ' . $e->getMessage()], 500);
         }
     }
 
     /**
-     * Calculates the End Date based on the Calendar Type
+     * Loops forward from the anchor date until it finds the period containing Today
      */
-    private function calculatePeriodDates(Carbon $startDate, string $type)
+    private function findCurrentPeriod(Carbon $anchorDate, string $type, Carbon $targetDate)
     {
-        $endDate = $startDate->copy();
-        $days = 0;
+        // 1. Calculate the first period duration
+        $period = $this->calculateEndDate($anchorDate, $type);
+        if (!$period) return null;
+
+        $start = $period['start'];
+        $end   = $period['end'];
+
+        // 2. Loop: While the End Date is in the past (before today), jump to the next period
+        // We use a safety counter to prevent infinite loops if something goes wrong
+        $safety = 0;
+        while ($end->lt($targetDate) && $safety < 1000) {
+            
+            // Advance the start date based on type
+            if ($type === 'MONTHLY') {
+                $start->addMonth();
+            } elseif ($type === 'QUARTERLY') {
+                $start->addMonths(3);
+            } elseif ($type === 'WEEKLY') {
+                $start->addWeeks(1);
+            } elseif ($type === 'FORTNIGHTLY') {
+                $start->addWeeks(2);
+            } else {
+                // Fallback for others
+                $start->addDays($period['days']);
+            }
+
+            // Recalculate the end date for this new start date
+            $period = $this->calculateEndDate($start, $type);
+            $end = $period['end'];
+            $safety++;
+        }
+
+        return $period;
+    }
+
+    /**
+     * Simply calculates End Date from a Start Date (No Looping)
+     */
+    private function calculateEndDate(Carbon $startDate, string $type)
+    {
+        $start = $startDate->copy();
+        $end   = $startDate->copy();
+        $days  = 0;
 
         switch ($type) {
             case 'WEEKLY':
-                // Add 6 days (e.g., Monday -> Sunday is 7 days total)
-                $endDate->addDays(6);
+                $end->addDays(6);
                 $days = 7;
                 break;
-
             case 'FORTNIGHTLY':
-                // Add 13 days (e.g., Mon Week 1 -> Sun Week 2 is 14 days total)
-                $endDate->addDays(13);
+                $end->addDays(13);
                 $days = 14;
                 break;
-
             case 'MONTHLY':
-                // Add 1 month then subtract 1 day to get end of period
-                $endDate->addMonth()->subDay();
-                $days = $startDate->diffInDays($endDate) + 1;
+                // Monthly end is Start + 1 Month - 1 Day
+                $end->addMonth()->subDay();
+                $days = $start->diffInDays($end) + 1;
                 break;
-
             case 'FOURWEEKLY':
-                $endDate->addDays(27);
+                $end->addDays(27);
                 $days = 28;
                 break;
-            
             case 'QUARTERLY':
-                $endDate->addMonths(3)->subDay();
-                $days = $startDate->diffInDays($endDate) + 1;
+                $end->addMonths(3)->subDay();
+                $days = $start->diffInDays($end) + 1;
                 break;
-
             default:
-                // Fallback for unknown types
                 return null;
         }
 
-        return [
-            'start' => $startDate,
-            'end'   => $endDate,
-            'days'  => $days
-        ];
+        return ['start' => $start, 'end' => $end, 'days' => $days];
+    }
+
+    /**
+     * Helper to get the very next period after a given period
+     */
+    private function calculateNextPeriod(Carbon $currentStartDate, string $type)
+    {
+        $nextStart = $currentStartDate->copy();
+        
+        if ($type === 'MONTHLY') {
+            $nextStart->addMonth();
+        } elseif ($type === 'QUARTERLY') {
+            $nextStart->addMonths(3);
+        } elseif ($type === 'WEEKLY') {
+            $nextStart->addWeeks(1);
+        } elseif ($type === 'FORTNIGHTLY') {
+            $nextStart->addWeeks(2);
+        } elseif ($type === 'FOURWEEKLY') {
+             $nextStart->addWeeks(4);
+        }
+
+        return $this->calculateEndDate($nextStart, $type);
     }
 
     private function parseXeroDate($xeroDate)
     {
         if (!$xeroDate) return null;
-
-        // Handle /Date(123123123)/ format
         if (preg_match('/\/Date\((\d+)([+-]\d+)?\)\//', $xeroDate, $matches)) {
-            // Xero sometimes sends timezone offset, sometimes not. 
-            // We usually just take the timestamp (index 1)
             return Carbon::createFromTimestampMs($matches[1]);
         }
-        
-        // Handle standard ISO strings just in case Xero updates their API format
         try {
             return Carbon::parse($xeroDate);
         } catch (\Exception $e) {
