@@ -19,6 +19,7 @@ use App\Services\XeroEmployeeService;
 use App\Services\XeroTimesheetService;
 use App\Models\XeroTimesheet;
 use Carbon\CarbonPeriod;
+use App\Models\PayPeriod; // Import the new model
 
 
 class XeroEmployeeController extends Controller
@@ -371,7 +372,7 @@ public function getAvailablePayPeriods(Request $request)
     {
         $orgId = $request->organization_id;
 
-        // Xero connection setup...
+        // ... [Connection Logic is same as before] ...
         $connection = XeroConnection::where('organization_id', $orgId)
             ->where('is_active', 1)
             ->first();
@@ -404,14 +405,14 @@ public function getAvailablePayPeriods(Request $request)
                 $type = strtoupper($calendar['CalendarType'] ?? '');
                 $name = $calendar['Name'] ?? 'Unknown';
 
-                // ✨ MAGIC FIX: Project this date forward until it catches up to Today
+                // Find Current Period
                 $currentPeriod = $this->findCurrentPeriod($xeroStartDate, $type, $today);
 
                 if ($currentPeriod) {
+                    // Add Current
                     $allPayPeriods[] = [
                         'calendar_name' => $name,
                         'calendar_type' => $type,
-                        // Return the Calculated Current Period
                         'start_date' => $currentPeriod['start']->toDateString(),
                         'end_date'   => $currentPeriod['end']->toDateString(),
                         'start_date_formatted' => $currentPeriod['start']->format('d M Y'),
@@ -420,10 +421,10 @@ public function getAvailablePayPeriods(Request $request)
                         'is_current' => true
                     ];
 
-                    // Optional: If you also want the NEXT period (Future)
+                    // Add Next (Future)
                     $nextPeriod = $this->calculateNextPeriod($currentPeriod['start'], $type);
                     $allPayPeriods[] = [
-                        'calendar_name' => $name . ' (Next)',
+                        'calendar_name' => $name . ' (Next)', // Or keep name same, up to you
                         'calendar_type' => $type,
                         'start_date' => $nextPeriod['start']->toDateString(),
                         'end_date'   => $nextPeriod['end']->toDateString(),
@@ -435,14 +436,50 @@ public function getAvailablePayPeriods(Request $request)
                 }
             }
 
+            // ---------------------------------------------------------
+            // 💾 NEW: Store in Database & Clean up Old Data
+            // ---------------------------------------------------------
+            $this->syncPayPeriodsToDatabase($orgId, $allPayPeriods);
+
             return response()->json([
                 'status' => true,
                 'pay_periods' => $allPayPeriods,
-                'message' => 'Current and future periods calculated'
+                'message' => 'Periods calculated and stored successfully'
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Payroll Error', ['msg' => $e->getMessage()]);
             return response()->json(['status' => false, 'message' => 'Error: ' . $e->getMessage()], 500);
+        }
+    }
+    /**
+     * Stores new periods and deletes old ones
+     */
+    private function syncPayPeriodsToDatabase($orgId, array $periods)
+    {
+        // 1. Delete Old Data
+        // Delete any period where the End Date is before Today (Past periods)
+        PayPeriod::where('organization_id', $orgId)
+            ->where('end_date', '<', Carbon::today())
+            ->delete();
+
+        // 2. Store or Update New Data
+        foreach ($periods as $period) {
+            PayPeriod::updateOrCreate(
+                [
+                    // Search criteria (Unique constraints)
+                    'organization_id' => $orgId,
+                    'calendar_name'   => $period['calendar_name'],
+                    'start_date'      => $period['start_date'],
+                ],
+                [
+                    // Data to update/insert
+                    'calendar_type'   => $period['calendar_type'],
+                    'end_date'        => $period['end_date'],
+                    'number_of_days'  => $period['number_of_days'],
+                    'is_current'      => $period['is_current'],
+                ]
+            );
         }
     }
 
