@@ -17,6 +17,7 @@ class XeroPayslip extends Model
 
     protected $fillable = [
         'organization_id',
+        'xero_connection_id',
         'xero_pay_run_id',
         'employee_xero_connection_id',
         'xero_payslip_id',
