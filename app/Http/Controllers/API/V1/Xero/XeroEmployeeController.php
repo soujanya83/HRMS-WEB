@@ -990,19 +990,28 @@ public function create(Request $request)
     // }
   
      
-      public function show($id)
+ public function index(Request $request)
 {
-    $connection = XeroConnection::where('is_active',1)->firstOrFail();
+    // 1. Validation
+    $request->validate([
+        'organization_id' => 'required',
+        'from_date'       => 'required|date',
+        'to_date'         => 'required|date',
+    ]);
 
-    $connection = app(\App\Services\Xero\XeroTokenService::class)
-        ->refreshIfNeeded($connection);
+    // 2. Fetch from Local Database
+    // We filter records where the Pay Run period falls within the requested range
+    $payRuns = \App\Models\XeroPayRun::where('organization_id', $request->organization_id)
+        ->where('period_start_date', '>=', $request->from_date) // Start on/after From Date
+        ->where('period_end_date', '<=', $request->to_date)     // End on/before To Date
+        ->orderBy('period_start_date', 'desc') // Latest first
+        ->get();
 
-    $response = Http::withHeaders([
-        'Authorization'=>'Bearer '.$connection->access_token,
-        'Xero-Tenant-Id'=>$connection->tenant_id
-    ])->get("https://api.xero.com/payroll.xro/1.0/PayRuns/$id");
-
-    return response()->json($response->json());
+    return response()->json([
+        'status' => true,
+        'count'  => $payRuns->count(),
+        'data'   => $payRuns
+    ]);
 }
 
 
