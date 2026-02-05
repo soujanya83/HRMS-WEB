@@ -1015,22 +1015,61 @@ public function create(Request $request)
 }
 
 
-  public function approve($id)
+public function approve(Request $request, $id) // $id = Xero PayRun ID
 {
-    $connection = XeroConnection::where('is_active',1)->firstOrFail();
+    $orgId = $request->organization_id; // Frontend se bhejna jaruri hai
+
+    // 1. Connection Logic
+    $connection = \App\Models\XeroConnection::where('organization_id', $orgId)
+        ->where('is_active', 1)->firstOrFail();
 
     $connection = app(\App\Services\Xero\XeroTokenService::class)
         ->refreshIfNeeded($connection);
 
+    // 2. Prepare Payload (Status change karne ke liye)
+    // Xero me Approve karne ka matlab hai Status ko 'POSTED' set karna
+    $payload = [
+        [
+            "PayRunID" => $id,
+            "PayRunStatus" => "POSTED" 
+        ]
+    ];
+
+    // 3. API Call (Note: URL me '/approve' nahi lagana hai)
     $response = Http::withHeaders([
-        'Authorization'=>'Bearer '.$connection->access_token,
-        'Xero-Tenant-Id'=>$connection->tenant_id,
-        'Accept'=>'application/json'
-    ])->post("https://api.xero.com/payroll.xro/1.0/PayRuns/$id/approve");
+        'Authorization' => 'Bearer ' . $connection->access_token,
+        'Xero-Tenant-Id' => $connection->tenant_id,
+        'Accept' => 'application/json'
+    ])->post("https://api.xero.com/payroll.xro/1.0/PayRuns/$id", $payload);
 
-    return response()->json($response->json());
+    if (!$response->successful()) {
+        return response()->json([
+            'status' => false,
+            'message' => 'Xero Approval Failed',
+            'details' => $response->json()
+        ], $response->status());
+    }
+
+    $data = $response->json();
+
+    // 4. Update Local Database
+    // Agar success hai, to apne table me bhi status update kar do
+    $localPayRun = \App\Models\XeroPayRun::where('xero_pay_run_id', $id)->first();
+    
+    if ($localPayRun) {
+        $localPayRun->update([
+            'status' => 'POSTED',
+            'is_synced' => true,
+            'last_synced_at' => now()
+        ]);
+    }
+
+    return response()->json([
+        'status' => true,
+        'message' => 'Pay Run Approved (Posted) successfully',
+        'data' => $data
+    ]);
 }
-
 
 
   
