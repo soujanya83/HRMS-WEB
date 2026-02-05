@@ -18,6 +18,7 @@ use App\Services\Xero\XeroTokenService;
 use App\Services\XeroEmployeeService;
 use App\Services\XeroTimesheetService;
 use App\Models\XeroTimesheet;
+use App\Models\XeroPayRun;
 use Carbon\CarbonPeriod;
 use App\Models\PayPeriod; // Import the new model
 
@@ -271,6 +272,9 @@ public function pushApproved(Request $request)
                 'EmployeeID' => $empXero->xero_employee_id,
                 'StartDate' => $startDate,
                 'EndDate' => $endDate,
+                // ❌ OLD CODE: 'Status' => 'DRAFT', 
+                // ✅ NEW CODE: Change to APPROVED
+                // 'Status' => 'APPROVED', // 👈 Set to APPROVED to push as approved timesheet
                 'Status' => 'DRAFT', // Usually safer to push as DRAFT first
                 'TimesheetLines' => [
                     [
@@ -842,72 +846,148 @@ public function getAvailablePayPeriods(Request $request)
 
 
 public function create(Request $request)
-{
-    // 1. Validation
-    $request->validate([
-        'organization_id' => 'required',
-        'from_date'       => 'required|date',
-        'to_date'         => 'required|date',
-    ]);
+    {
+        // ---------------------------------------------------
+        // 1. VALIDATION & SETUP
+        // ---------------------------------------------------
+        $request->validate([
+            'organization_id' => 'required',
+            'from_date'       => 'required|date',
+            'to_date'         => 'required|date',
+        ]);
 
-    $orgId = $request->organization_id;
+        $orgId = $request->organization_id;
 
-    // 2. Find the stored Pay Period to get the Calendar ID
-    $payPeriod = \App\Models\PayPeriod::where('organization_id', $orgId)
-        ->where('start_date', $request->from_date)
-        ->where('end_date', $request->to_date)
-        ->first();
+        // Get Pay Period (for Calendar ID & Name)
+        $payPeriod = PayPeriod::where('organization_id', $orgId)
+            ->where('start_date', $request->from_date)
+            ->where('end_date', $request->to_date)
+            ->first();
 
-    if (!$payPeriod) {
-        return response()->json([
-            'status' => false,
-            'message' => 'Pay period not found. Please sync pay periods first.'
-        ], 404);
-    }
+        if (!$payPeriod || !$payPeriod->calendar_id) {
+            return response()->json([
+                'status' => false, 
+                'message' => 'Pay period or Calendar ID not found.'
+            ], 422);
+        }
 
-    if (!$payPeriod->calendar_id) {
-        return response()->json([
-            'status' => false,
-            'message' => 'Calendar ID missing for this period. Re-sync your pay periods.'
-        ], 422);
-    }
+        // Get Xero Connection
+        $connection = XeroConnection::where('organization_id', $orgId)
+            ->where('is_active', 1)
+            ->firstOrFail();
 
-    // 3. Xero Connection
-    $connection = XeroConnection::where('organization_id', $orgId)
-        ->where('is_active', 1)
-        ->firstOrFail();
+        $connection = app(\App\Services\Xero\XeroTokenService::class)
+            ->refreshIfNeeded($connection);
 
-    $connection = app(\App\Services\Xero\XeroTokenService::class)
-        ->refreshIfNeeded($connection);
-
-    // 4. Construct Payload
-    // Xero requires an Array of objects, containing the CalendarID
-    $payload = [
-        [
+        // ---------------------------------------------------
+        // 2. CALL 1: CREATE PAY RUN (POST)
+        // ---------------------------------------------------
+        $payload = [[
             "PayrollCalendarID" => $payPeriod->calendar_id,
             "PayRunType"        => "Scheduled"
-        ]
-    ];
+        ]];
 
-    // 5. Send Request
-    $response = Http::withHeaders([
-        'Authorization' => 'Bearer ' . $connection->access_token,
-        'Xero-Tenant-Id' => $connection->tenant_id,
-        'Accept' => 'application/json'
-    ])->post('https://api.xero.com/payroll.xro/1.0/PayRuns', $payload);
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $connection->access_token,
+                'Xero-Tenant-Id' => $connection->tenant_id,
+                'Accept' => 'application/json'
+            ])->post('https://api.xero.com/payroll.xro/1.0/PayRuns', $payload);
 
-    // 6. Handle Response
-    if (!$response->successful()) {
-        // Return JSON error with Xero details
-        return response()->json([
-            'status' => false,
-            'message' => 'Xero API Error',
-            'details' => $response->json()
-        ], $response->status());
+            if (!$response->successful()) {
+                return response()->json(['status' => false, 'message' => 'Xero Create Error', 'details' => $response->json()], $response->status());
+            }
+
+            // ---------------------------------------------------
+            // 3. SAVE INITIAL DATA (Response 1)
+            // ---------------------------------------------------
+            $createdRun = $response->json()['PayRuns'][0];
+            $payRunId   = $createdRun['PayRunID']; // We need this ID for the next call
+
+            // Parse Dates
+            $startDate   = $this->parseXeroDate($createdRun['PayRunPeriodStartDate']);
+            $endDate     = $this->parseXeroDate($createdRun['PayRunPeriodEndDate']);
+            $paymentDate = $this->parseXeroDate($createdRun['PaymentDate']);
+
+            // Create or Update DB Record (Initial Save)
+            $dbPayRun = XeroPayRun::updateOrCreate(
+                ['xero_pay_run_id' => $payRunId],
+                [
+                    'organization_id'          => $orgId,
+                    'xero_connection_id'       => $connection->id,
+                    'xero_payroll_calendar_id' => $createdRun['PayrollCalendarID'],
+                    'calendar_name'            => $payPeriod->calendar_name, // Taken from local PayPeriod
+                    'period_start_date'        => $startDate,
+                    'period_end_date'          => $endDate,
+                    'payment_date'             => $paymentDate,
+                    'status'                   => $createdRun['PayRunStatus'],
+                    'pay_run_type'             => 'Scheduled',
+                    'is_synced'                => false, // Not fully synced yet
+                    'xero_data'                => $createdRun
+                ]
+            );
+
+            // ---------------------------------------------------
+            // 4. CALL 2: GET FULL DETAILS (GET)
+            // ---------------------------------------------------
+            // Now we call Xero again using the ID we just got to fetch Wages, Tax, etc.
+            $detailsResponse = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $connection->access_token,
+                'Xero-Tenant-Id' => $connection->tenant_id,
+                'Accept' => 'application/json'
+            ])->get("https://api.xero.com/payroll.xro/1.0/PayRuns/{$payRunId}");
+
+            if ($detailsResponse->successful()) {
+                $fullData = $detailsResponse->json()['PayRuns'][0];
+                $payslips = $fullData['Payslips'] ?? [];
+
+                // ---------------------------------------------------
+                // 5. UPDATE DATABASE WITH FINANCIALS (Response 2)
+                // ---------------------------------------------------
+                $dbPayRun->update([
+                    'total_wages'         => $fullData['Wages'] ?? 0,
+                    'total_tax'           => $fullData['Tax'] ?? 0,
+                    'total_super'         => $fullData['Super'] ?? 0,
+                    'total_reimbursement' => $fullData['Reimbursement'] ?? 0,
+                    'total_deductions'    => $fullData['Deductions'] ?? 0,
+                    'total_net_pay'       => $fullData['NetPay'] ?? 0,
+                    'employee_count'      => count($payslips),
+                    'xero_data'           => $fullData, // Update with the fuller data
+                    'is_synced'           => true,
+                    'last_synced_at'      => now(),
+                ]);
+                
+                // Optional: You can loop through $payslips here and save them to XeroPayslip table if needed
+            }
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Pay Run created and synced successfully',
+                'data' => $dbPayRun->fresh() // Return the updated model
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Xero PayRun Error: ' . $e->getMessage());
+            return response()->json(['status' => false, 'message' => 'Server Error: ' . $e->getMessage()], 500);
+        }
     }
 
-    return response()->json($response->json());
-}
+    /**
+     * Helper to parse Xero /Date(123123)/ format
+     */
+    // private function parseXeroDate($xeroDate)
+    // {
+    //     if (!$xeroDate) return null;
+    //     if (preg_match('/\/Date\((\d+)([+-]\d+)?\)\//', $xeroDate, $matches)) {
+    //         // matches[1] is the timestamp in milliseconds
+    //         return Carbon::createFromTimestampMs($matches[1])->toDateString();
+    //     }
+    //     try {
+    //         return Carbon::parse($xeroDate)->toDateString();
+    //     } catch (\Exception $e) {
+    //         return null;
+    //     }
+    // }
   
      
       public function show($id)
