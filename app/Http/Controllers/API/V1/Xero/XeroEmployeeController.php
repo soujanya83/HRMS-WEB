@@ -368,128 +368,156 @@ public function pushApproved(Request $request)
 
 
 public function getAvailablePayPeriods(Request $request)
-{
-    $orgId = $request->organization_id;
+    {
+        $orgId = $request->organization_id;
 
-    // Xero connection
-    $connection = XeroConnection::where('organization_id', $orgId)
-        ->where('is_active', 1)
-        ->first();
+        // 1. Xero connection check
+        $connection = XeroConnection::where('organization_id', $orgId)
+            ->where('is_active', 1)
+            ->first();
 
-    if (!$connection) {
-        return response()->json([
-            'status' => false,
-            'message' => 'Xero not connected'
-        ], 404);
-    }
-
-    // Token refresh
-    $connection = app(\App\Services\Xero\XeroTokenService::class)
-        ->refreshIfNeeded($connection);
-
-    try {
-        // 1️⃣ Fetch payroll calendars
-        $calendarResponse = Http::withHeaders([
-            'Authorization' => 'Bearer ' . $connection->access_token,
-            'Xero-Tenant-Id' => $connection->tenant_id,
-            'Accept' => 'application/json',
-        ])->get('https://api.xero.com/payroll.xro/1.0/PayrollCalendars');
-
-        if (!$calendarResponse->successful()) {
+        if (!$connection) {
             return response()->json([
                 'status' => false,
-                'message' => 'Failed to fetch pay calendars from Xero'
-            ], 500);
+                'message' => 'Xero not connected'
+            ], 404);
         }
 
-        $calendars = $calendarResponse->json()['PayrollCalendars'] ?? [];
-        $allPayPeriods = [];
+        // 2. Token refresh
+        $connection = app(\App\Services\Xero\XeroTokenService::class)
+            ->refreshIfNeeded($connection);
 
-        // 2️⃣ Loop calendars
-        foreach ($calendars as $calendar) {
-
-            $calendarId   = $calendar['PayrollCalendarID'];
-            $calendarName = $calendar['Name'] ?? 'Unknown Calendar';
-
-            // 3️⃣ Fetch periods for this calendar
-            $periodResponse = Http::withHeaders([
+        try {
+            // 3. Fetch ONLY the Calendars (This is the only valid endpoint for AU config)
+            $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $connection->access_token,
                 'Xero-Tenant-Id' => $connection->tenant_id,
                 'Accept' => 'application/json',
-            ])->get(
-                "https://api.xero.com/payroll.xro/1.0/PayrollCalendarPeriods/{$calendarId}"
-            );
+            ])->get('https://api.xero.com/payroll.xro/1.0/PayrollCalendars');
 
-            if (!$periodResponse->successful()) {
-                continue;
+            if (!$response->successful()) {
+                Log::error('Xero API Error', ['body' => $response->body()]);
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Failed to fetch pay calendars from Xero: ' . $response->status()
+                ], $response->status());
             }
 
-            $periods = $periodResponse->json()['PayrollCalendarPeriods'] ?? [];
+            $calendars = $response->json()['PayrollCalendars'] ?? [];
+            $allPayPeriods = [];
 
-            // 4️⃣ Loop periods
-            foreach ($periods as $period) {
+            foreach ($calendars as $calendar) {
+                // Xero gives us the StartDate of the *next* pay run.
+                $xeroStartDate = $this->parseXeroDate($calendar['StartDate'] ?? null);
+                
+                if (!$xeroStartDate) continue;
 
-                $startDate = $this->parseXeroDate($period['StartDate'] ?? null);
-                $endDate   = $this->parseXeroDate($period['EndDate'] ?? null);
+                $type = strtoupper($calendar['CalendarType'] ?? '');
+                $name = $calendar['Name'] ?? 'Unknown';
 
-                if (!$startDate || !$endDate) {
-                    continue;
-                }
+                // We can generate the specific dates based on the type
+                $period = $this->calculatePeriodDates($xeroStartDate, $type);
 
-                // Only current / future periods
-                if ($endDate->isFuture() || $endDate->isToday()) {
+                if ($period) {
                     $allPayPeriods[] = [
-                        'calendar_name' => $calendarName,
-                        'start_date' => $startDate->toDateString(),
-                        'end_date' => $endDate->toDateString(),
-                        'start_date_formatted' => $startDate->format('d M Y'),
-                        'end_date_formatted' => $endDate->format('d M Y'),
-                        'period_status' => $period['PeriodStatus'] ?? 'Unknown',
-                        'number_of_days' => $startDate->diffInDays($endDate) + 1,
+                        'calendar_name' => $name,
+                        'calendar_type' => $type,
+                        'start_date' => $period['start']->toDateString(),
+                        'end_date'   => $period['end']->toDateString(),
+                        'start_date_formatted' => $period['start']->format('d M Y'),
+                        'end_date_formatted'   => $period['end']->format('d M Y'),
+                        'number_of_days' => $period['days'],
                     ];
                 }
             }
+
+            // Sort by start date (newest first)
+            usort($allPayPeriods, function ($a, $b) {
+                return strtotime($b['start_date']) - strtotime($a['start_date']);
+            });
+
+            return response()->json([
+                'status' => true,
+                'pay_periods' => $allPayPeriods,
+                'message' => 'Periods calculated successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error fetching pay periods', ['error' => $e->getMessage()]);
+            return response()->json([
+                'status' => false,
+                'message' => 'Internal Error: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Calculates the End Date based on the Calendar Type
+     */
+    private function calculatePeriodDates(Carbon $startDate, string $type)
+    {
+        $endDate = $startDate->copy();
+        $days = 0;
+
+        switch ($type) {
+            case 'WEEKLY':
+                // Add 6 days (e.g., Monday -> Sunday is 7 days total)
+                $endDate->addDays(6);
+                $days = 7;
+                break;
+
+            case 'FORTNIGHTLY':
+                // Add 13 days (e.g., Mon Week 1 -> Sun Week 2 is 14 days total)
+                $endDate->addDays(13);
+                $days = 14;
+                break;
+
+            case 'MONTHLY':
+                // Add 1 month then subtract 1 day to get end of period
+                $endDate->addMonth()->subDay();
+                $days = $startDate->diffInDays($endDate) + 1;
+                break;
+
+            case 'FOURWEEKLY':
+                $endDate->addDays(27);
+                $days = 28;
+                break;
+            
+            case 'QUARTERLY':
+                $endDate->addMonths(3)->subDay();
+                $days = $startDate->diffInDays($endDate) + 1;
+                break;
+
+            default:
+                // Fallback for unknown types
+                return null;
         }
 
-        // 5️⃣ Sort latest first
-        usort($allPayPeriods, function ($a, $b) {
-            return strtotime($b['start_date']) - strtotime($a['start_date']);
-        });
-
-        return response()->json([
-            'status' => true,
-            'pay_periods' => $allPayPeriods,
-            'message' => 'Select a pay period to generate timesheets'
-        ]);
-
-    } catch (\Exception $e) {
-
-        Log::error('Error fetching pay periods', [
-            'error' => $e->getMessage()
-        ]);
-
-        return response()->json([
-            'status' => false,
-            'message' => 'Error: ' . $e->getMessage()
-        ], 500);
-    }
-}
-
-
-
-private function parseXeroDate($xeroDate)
-{
-    if (!$xeroDate) {
-        return null;
+        return [
+            'start' => $startDate,
+            'end'   => $endDate,
+            'days'  => $days
+        ];
     }
 
-    if (preg_match('/\/Date\((\d+)/', $xeroDate, $matches)) {
-        return \Carbon\Carbon::createFromTimestampMs($matches[1]);
+    private function parseXeroDate($xeroDate)
+    {
+        if (!$xeroDate) return null;
+
+        // Handle /Date(123123123)/ format
+        if (preg_match('/\/Date\((\d+)([+-]\d+)?\)\//', $xeroDate, $matches)) {
+            // Xero sometimes sends timezone offset, sometimes not. 
+            // We usually just take the timestamp (index 1)
+            return Carbon::createFromTimestampMs($matches[1]);
+        }
+        
+        // Handle standard ISO strings just in case Xero updates their API format
+        try {
+            return Carbon::parse($xeroDate);
+        } catch (\Exception $e) {
+            return null;
+        }
     }
-
-    return null;
-}
-
 
 
 
