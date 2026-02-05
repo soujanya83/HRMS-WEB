@@ -372,7 +372,7 @@ public function getAvailablePayPeriods(Request $request)
     {
         $orgId = $request->organization_id;
 
-        // ... [Connection Logic is same as before] ...
+        // 1. Connection Logic
         $connection = XeroConnection::where('organization_id', $orgId)
             ->where('is_active', 1)
             ->first();
@@ -384,6 +384,7 @@ public function getAvailablePayPeriods(Request $request)
         $connection = app(\App\Services\Xero\XeroTokenService::class)->refreshIfNeeded($connection);
 
         try {
+            // 2. Fetch Calendars
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $connection->access_token,
                 'Xero-Tenant-Id' => $connection->tenant_id,
@@ -405,46 +406,43 @@ public function getAvailablePayPeriods(Request $request)
                 $type = strtoupper($calendar['CalendarType'] ?? '');
                 $name = $calendar['Name'] ?? 'Unknown';
 
-                // Find Current Period
+                // A. Find Current Period
                 $currentPeriod = $this->findCurrentPeriod($xeroStartDate, $type, $today);
 
                 if ($currentPeriod) {
-                    // Add Current
-                    $allPayPeriods[] = [
-                        'calendar_name' => $name,
-                        'calendar_type' => $type,
-                        'start_date' => $currentPeriod['start']->toDateString(),
-                        'end_date'   => $currentPeriod['end']->toDateString(),
-                        'start_date_formatted' => $currentPeriod['start']->format('d M Y'),
-                        'end_date_formatted'   => $currentPeriod['end']->format('d M Y'),
-                        'number_of_days' => $currentPeriod['days'],
-                        'is_current' => true
-                    ];
+                    // --- 1. Current Period ---
+                    $allPayPeriods[] = $this->formatPeriod($currentPeriod, $name, $type, true, 'Current');
 
-                    // Add Next (Future)
+                    // --- 2. Future Period (Next 1) ---
                     $nextPeriod = $this->calculateNextPeriod($currentPeriod['start'], $type);
-                    $allPayPeriods[] = [
-                        'calendar_name' => $name . ' (Next)', // Or keep name same, up to you
-                        'calendar_type' => $type,
-                        'start_date' => $nextPeriod['start']->toDateString(),
-                        'end_date'   => $nextPeriod['end']->toDateString(),
-                        'start_date_formatted' => $nextPeriod['start']->format('d M Y'),
-                        'end_date_formatted'   => $nextPeriod['end']->format('d M Y'),
-                        'number_of_days' => $nextPeriod['days'],
-                        'is_current' => false
-                    ];
+                    $allPayPeriods[] = $this->formatPeriod($nextPeriod, $name, $type, false, 'Future');
+
+                    // --- 3. Past Periods (Last 3) ---
+                    $tempStart = $currentPeriod['start']; // Start anchoring from current
+                    
+                    for ($i = 1; $i <= 3; $i++) {
+                        $pastPeriod = $this->calculatePreviousPeriod($tempStart, $type);
+                        
+                        $allPayPeriods[] = $this->formatPeriod($pastPeriod, $name, $type, false, 'Past');
+                        
+                        // Update anchor for next iteration (move further back)
+                        $tempStart = $pastPeriod['start'];
+                    }
                 }
             }
 
-            // ---------------------------------------------------------
-            // 💾 NEW: Store in Database & Clean up Old Data
-            // ---------------------------------------------------------
+            // Sort: Future dates first, Past dates last
+            usort($allPayPeriods, function ($a, $b) {
+                return strtotime($b['start_date']) - strtotime($a['start_date']);
+            });
+
+            // 3. Store in Database (Sync Logic Updated)
             $this->syncPayPeriodsToDatabase($orgId, $allPayPeriods);
 
             return response()->json([
                 'status' => true,
                 'pay_periods' => $allPayPeriods,
-                'message' => 'Periods calculated and stored successfully'
+                'message' => 'Periods (Past, Current, Future) calculated and stored'
             ]);
 
         } catch (\Exception $e) {
@@ -452,28 +450,55 @@ public function getAvailablePayPeriods(Request $request)
             return response()->json(['status' => false, 'message' => 'Error: ' . $e->getMessage()], 500);
         }
     }
+
     /**
-     * Stores new periods and deletes old ones
+     * Helper to format the array for response/storage
+     */
+    private function formatPeriod($periodData, $name, $type, $isCurrent, $statusTag)
+    {
+        return [
+            'calendar_name' => $name,
+            'calendar_type' => $type,
+            'start_date' => $periodData['start']->toDateString(),
+            'end_date'   => $periodData['end']->toDateString(),
+            'start_date_formatted' => $periodData['start']->format('d M Y'),
+            'end_date_formatted'   => $periodData['end']->format('d M Y'),
+            'number_of_days' => $periodData['days'],
+            'is_current' => $isCurrent,
+            'period_category' => $statusTag // Optional: helpful for debugging
+        ];
+    }
+
+    /**
+     * Syncs data: Keeps the specific periods we just calculated, deletes everything else for this Org.
      */
     private function syncPayPeriodsToDatabase($orgId, array $periods)
     {
-        // 1. Delete Old Data
-        // Delete any period where the End Date is before Today (Past periods)
+        // 1. Collect all the Start Dates we are about to save
+        $activeStartDates = array_column($periods, 'start_date');
+
+        // 2. Delete "Stale" Data
+        // We delete any record for this Org that matches the calendar names found
+        // BUT does NOT match the start dates we just calculated.
+        // This effectively removes "Old Past" data (older than 3 periods)
+        // while keeping the 3 past + 1 current + 1 future valid.
+        
+        $calendarNames = array_unique(array_column($periods, 'calendar_name'));
+
         PayPeriod::where('organization_id', $orgId)
-            ->where('end_date', '<', Carbon::today())
+            ->whereIn('calendar_name', $calendarNames)
+            ->whereNotIn('start_date', $activeStartDates)
             ->delete();
 
-        // 2. Store or Update New Data
+        // 3. Update or Create the valid periods
         foreach ($periods as $period) {
             PayPeriod::updateOrCreate(
                 [
-                    // Search criteria (Unique constraints)
                     'organization_id' => $orgId,
                     'calendar_name'   => $period['calendar_name'],
                     'start_date'      => $period['start_date'],
                 ],
                 [
-                    // Data to update/insert
                     'calendar_type'   => $period['calendar_type'],
                     'end_date'        => $period['end_date'],
                     'number_of_days'  => $period['number_of_days'],
@@ -483,104 +508,80 @@ public function getAvailablePayPeriods(Request $request)
         }
     }
 
-    /**
-     * Loops forward from the anchor date until it finds the period containing Today
-     */
+    // --- Date Calculation Helpers ---
+
     private function findCurrentPeriod(Carbon $anchorDate, string $type, Carbon $targetDate)
     {
-        // 1. Calculate the first period duration
         $period = $this->calculateEndDate($anchorDate, $type);
         if (!$period) return null;
 
         $start = $period['start'];
         $end   = $period['end'];
-
-        // 2. Loop: While the End Date is in the past (before today), jump to the next period
-        // We use a safety counter to prevent infinite loops if something goes wrong
         $safety = 0;
-        while ($end->lt($targetDate) && $safety < 1000) {
-            
-            // Advance the start date based on type
-            if ($type === 'MONTHLY') {
-                $start->addMonth();
-            } elseif ($type === 'QUARTERLY') {
-                $start->addMonths(3);
-            } elseif ($type === 'WEEKLY') {
-                $start->addWeeks(1);
-            } elseif ($type === 'FORTNIGHTLY') {
-                $start->addWeeks(2);
-            } else {
-                // Fallback for others
-                $start->addDays($period['days']);
-            }
 
-            // Recalculate the end date for this new start date
+        // Loop forward until we hit today
+        while ($end->lt($targetDate) && $safety < 1000) {
+            if ($type === 'MONTHLY') $start->addMonth();
+            elseif ($type === 'QUARTERLY') $start->addMonths(3);
+            elseif ($type === 'WEEKLY') $start->addWeeks(1);
+            elseif ($type === 'FORTNIGHTLY') $start->addWeeks(2);
+            else $start->addDays($period['days']);
+            
             $period = $this->calculateEndDate($start, $type);
             $end = $period['end'];
             $safety++;
         }
-
         return $period;
     }
 
-    /**
-     * Simply calculates End Date from a Start Date (No Looping)
-     */
     private function calculateEndDate(Carbon $startDate, string $type)
     {
         $start = $startDate->copy();
         $end   = $startDate->copy();
         $days  = 0;
-
         switch ($type) {
-            case 'WEEKLY':
-                $end->addDays(6);
-                $days = 7;
-                break;
-            case 'FORTNIGHTLY':
-                $end->addDays(13);
-                $days = 14;
-                break;
-            case 'MONTHLY':
-                // Monthly end is Start + 1 Month - 1 Day
-                $end->addMonth()->subDay();
-                $days = $start->diffInDays($end) + 1;
-                break;
-            case 'FOURWEEKLY':
-                $end->addDays(27);
-                $days = 28;
-                break;
-            case 'QUARTERLY':
-                $end->addMonths(3)->subDay();
-                $days = $start->diffInDays($end) + 1;
-                break;
-            default:
-                return null;
+            case 'WEEKLY': $end->addDays(6); $days = 7; break;
+            case 'FORTNIGHTLY': $end->addDays(13); $days = 14; break;
+            case 'MONTHLY': $end->addMonth()->subDay(); $days = $start->diffInDays($end) + 1; break;
+            case 'FOURWEEKLY': $end->addDays(27); $days = 28; break;
+            case 'QUARTERLY': $end->addMonths(3)->subDay(); $days = $start->diffInDays($end) + 1; break;
+            default: return null;
         }
-
         return ['start' => $start, 'end' => $end, 'days' => $days];
     }
 
-    /**
-     * Helper to get the very next period after a given period
-     */
     private function calculateNextPeriod(Carbon $currentStartDate, string $type)
     {
         $nextStart = $currentStartDate->copy();
+        if ($type === 'MONTHLY') $nextStart->addMonth();
+        elseif ($type === 'QUARTERLY') $nextStart->addMonths(3);
+        elseif ($type === 'WEEKLY') $nextStart->addWeeks(1);
+        elseif ($type === 'FORTNIGHTLY') $nextStart->addWeeks(2);
+        elseif ($type === 'FOURWEEKLY') $nextStart->addWeeks(4);
         
+        return $this->calculateEndDate($nextStart, $type);
+    }
+
+    /**
+     * 🆕 Calculates the Previous Period (Backwards)
+     */
+    private function calculatePreviousPeriod(Carbon $currentStartDate, string $type)
+    {
+        $prevStart = $currentStartDate->copy();
+
         if ($type === 'MONTHLY') {
-            $nextStart->addMonth();
+            $prevStart->subMonth();
         } elseif ($type === 'QUARTERLY') {
-            $nextStart->addMonths(3);
+            $prevStart->subMonths(3);
         } elseif ($type === 'WEEKLY') {
-            $nextStart->addWeeks(1);
+            $prevStart->subWeeks(1);
         } elseif ($type === 'FORTNIGHTLY') {
-            $nextStart->addWeeks(2);
+            $prevStart->subWeeks(2);
         } elseif ($type === 'FOURWEEKLY') {
-             $nextStart->addWeeks(4);
+             $prevStart->subWeeks(4);
         }
 
-        return $this->calculateEndDate($nextStart, $type);
+        return $this->calculateEndDate($prevStart, $type);
     }
 
     private function parseXeroDate($xeroDate)
@@ -589,13 +590,8 @@ public function getAvailablePayPeriods(Request $request)
         if (preg_match('/\/Date\((\d+)([+-]\d+)?\)\//', $xeroDate, $matches)) {
             return Carbon::createFromTimestampMs($matches[1]);
         }
-        try {
-            return Carbon::parse($xeroDate);
-        } catch (\Exception $e) {
-            return null;
-        }
+        try { return Carbon::parse($xeroDate); } catch (\Exception $e) { return null; }
     }
-
 
 
 
