@@ -4,6 +4,7 @@ namespace App\Http\Controllers\API\V1;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class ProfilePinController extends Controller
 {
@@ -69,7 +70,7 @@ class ProfilePinController extends Controller
 
         $otp = rand(100000, 999999);
         // Store OTP in cache for 10 minutes, keyed by user id
-        \Cache::put('profile_pin_otp_' . $user->id, $otp, now()->addMinutes(10));
+        Cache::put('profile_pin_otp_' . $user->id, $otp, now()->addMinutes(10));
 
         $user->notify(new \App\Notifications\ProfilePinOtpNotification($otp));
 
