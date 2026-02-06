@@ -63,7 +63,7 @@ class ProfilePinController extends Controller
             'email' => 'required|email|exists:users,email',
         ]);
 
-        $user = \App\Models\User::where('email', $request->email)->first();
+        $user = \app\Models\User::where('email', $request->email)->first();
         if (!$user) {
             return response()->json(['message' => 'User not found.'], 404);
         }
@@ -88,7 +88,7 @@ class ProfilePinController extends Controller
             'pin' => 'required|digits:4',
         ]);
 
-        $user = \App\Models\User::where('email', $request->email)->first();
+        $user = \app\Models\User::where('email', $request->email)->first();
         if (!$user) {
             return response()->json(['message' => 'User not found.'], 404);
         }
