@@ -53,10 +53,13 @@ class Employee extends Model
         'emergency_contact_name',
         'emergency_contact_phone',
         'face_embedding',
+        'is_face_registered',
+        'profile_image_url',
     ];
 
     protected $casts = [
         'face_embedding' => 'array',
+        'is_face_registered' => 'boolean',
     ];
 
     // Relationships
