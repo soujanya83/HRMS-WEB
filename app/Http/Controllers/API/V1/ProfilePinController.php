@@ -94,7 +94,7 @@ class ProfilePinController extends Controller
         }
 
         $cacheKey = 'profile_pin_otp_' . $user->id;
-        $cachedOtp = \Cache::get($cacheKey);
+        $cachedOtp = Cache::get($cacheKey);
         if (!$cachedOtp) {
             return response()->json(['message' => 'OTP expired or invalid.'], 400);
         }
@@ -105,7 +105,7 @@ class ProfilePinController extends Controller
         $user->profile_pin = password_hash($request->pin, PASSWORD_DEFAULT);
         $user->save();
         // Remove OTP from cache
-        \Cache::forget($cacheKey);
+        Cache::forget($cacheKey);
         return response()->json(['message' => 'Profile pin reset successfully.']);
     }
 }
