@@ -72,7 +72,7 @@ class ProfilePinController extends Controller
         // Store OTP in cache for 10 minutes, keyed by user id
         Cache::put('profile_pin_otp_' . $user->id, $otp, now()->addMinutes(10));
 
-        $user->notify(new \App\Notifications\ProfilePinOtpNotification($otp));
+        $user->notify(new \app\Notifications\ProfilePinOtpNotification($otp));
 
         return response()->json(['message' => 'OTP sent to your email. Please verify to reset your pin.']);
     }
