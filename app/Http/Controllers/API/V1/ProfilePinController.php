@@ -95,7 +95,7 @@ class ProfilePinController extends Controller
             'pin' => 'required|digits:4',
         ]);
 
-        $user = \app\Models\User::where('email', $request->email)->first();
+        $user = User::where('email', $request->email)->first();
         if (!$user) {
             return response()->json(['message' => 'User not found.'], 404);
         }
