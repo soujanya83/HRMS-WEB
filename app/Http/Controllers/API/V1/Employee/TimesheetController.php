@@ -14,6 +14,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Carbon;
+use Carbon\CarbonPeriod;
 use App\Models\XeroConnection;
 use App\Models\EmployeeXeroConnection;
 use App\Models\XeroTimesheet;
@@ -21,6 +22,10 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\Payrolls;
 use App\Models\XeroPayRun;
+use App\Models\XeroPayRunEmployee;
+use App\Models\XeroPayRunEmployeeTimesheet;
+use App\Models\PayPeriod;
+use App\Models\Project;
 
 
 
@@ -1538,53 +1543,78 @@ class TimesheetController extends Controller
 
 
 
-     public function generate(Request $request)
-    {
-        $request->validate([
-            'from' => 'required|date',
-            'to' => 'required|date',
-        ]);
+   public function generate(Request $request)
+{
+    $request->validate([
+        'from' => 'required|date',
+        'to' => 'required|date',
+    ]);
 
-        $orgId = $request->organization_id;
+    $orgId = $request->organization_id;
+    $employees = Employee::where('organization_id', $orgId)->get();
+    $created = 0;
 
-        $employees = Employee::where('organization_id', $orgId)->get();
+    foreach ($employees as $employee) {
 
-        $created = 0;
+        // Prevent duplicate generation
+        $exists = Timesheet::where('employee_id', $employee->id)
+            ->where('from_date', $request->from)
+            ->where('to_date', $request->to)
+            ->exists(); 
 
-        foreach ($employees as $employee) {
+        if ($exists) continue;
 
-            // Prevent duplicate generation
-            $exists = Timesheet::where('employee_id', $employee->id)
-                ->where('from_date', $request->from)
-                ->where('to_date', $request->to)
-                ->exists(); 
+        // 1. Fetch Daily Attendance Records
+        $attendancesRaw = Attendance::where('employee_id', $employee->id)
+            ->whereBetween('date', [$request->from, $request->to])
+            ->get();
 
-            if ($exists) continue;
+        // ⚡ KEY FIX: Convert collection to a Key-Value pair where Key = 'Y-m-d'
+        // This ensures we can find the record regardless of whether DB is datetime or model casts
+        $attendanceLookup = $attendancesRaw->mapWithKeys(function ($item) {
+            // Force convert DB date to strict 'Y-m-d' string
+            return [\Carbon\Carbon::parse($item->date)->toDateString() => $item];
+        });
 
-            // Sum attendance hours for this employee in period
-            $hours = Attendance::where('employee_id', $employee->id)
-                ->whereBetween('date', [$request->from, $request->to])
-                ->sum('total_work_hours');
+        // 2. Build the JSON Structure & Calculate Total
+        $dailyData = [];
+        $totalHours = 0;
 
-            Timesheet::create([
-                'employee_id' => $employee->id,
-                'organization_id' => $orgId,
-                'from_date' => $request->from, // period start
-                'to_date' => $request->to, // period end
-                'regular_hours' => $hours,
-                'overtime_hours' => 0,
-                'status' => 'pending',
-            ]);
+        $period = CarbonPeriod::create($request->from, $request->to);
 
-            $created++;
+        foreach ($period as $date) {
+            $dateStr = $date->toDateString(); // "2026-02-01"
+            
+            // Check strictly by the string key we created above
+            if (isset($attendanceLookup[$dateStr])) {
+                $dayHours = (float) $attendanceLookup[$dateStr]->total_work_hours;
+            } else {
+                $dayHours = 0;
+            }
+
+            $dailyData[$dateStr] = $dayHours;
+            $totalHours += $dayHours;
         }
 
-        return response()->json([
-            'status' => true,
-            'created' => $created
+        Timesheet::create([
+            'employee_id' => $employee->id,
+            'organization_id' => $orgId,
+            'from_date' => $request->from,
+            'to_date' => $request->to,
+            'regular_hours' => $totalHours,
+            'daily_breakdown' => $dailyData,
+            'overtime_hours' => 0,
+            'status' => 'pending',
         ]);
+
+        $created++;
     }
 
+    return response()->json([
+        'status' => true,
+        'created' => $created
+    ]);
+}
     /**
      * List timesheets by organization
      */
@@ -1625,19 +1655,80 @@ class TimesheetController extends Controller
     /**
      * Update single timesheet (manual edit)
      */
-    public function update(Request $request, $id)
-    {
-        $timesheet = Timesheet::findOrFail($id);
+ public function update(Request $request, $id)
+{
+    $request->validate([
+        'daily_breakdown' => 'nullable|array',
+        'regular_hours'   => 'nullable|numeric',
+        'overtime_hours'  => 'nullable|numeric',
+        'remarks'         => 'nullable|string',
+    ]);
 
-        $timesheet->update([
-            'regular_hours' => $request->regular_hours,
-            'overtime_hours' => $request->overtime_hours,
-            'remarks' => $request->remarks,
-        ]);
+    $timesheet = Timesheet::findOrFail($id);
 
-        return response()->json(['status' => true]);
+    $data = [
+        'overtime_hours' => $request->overtime_hours,
+        'remarks'        => $request->remarks,
+    ];
+
+    // SCENARIO 1: Frontend sends exact daily data (BEST)
+    if ($request->has('daily_breakdown')) {
+        $data['daily_breakdown'] = $request->daily_breakdown;
+        
+        // Always trust the breakdown sum over any manual total
+        $data['regular_hours'] = array_sum($request->daily_breakdown);
+    } 
+    // SCENARIO 2: Frontend only sends total hours (FALLBACK)
+    // We must generate a fake breakdown so Xero doesn't receive 0s
+    elseif ($request->has('regular_hours')) {
+        $newTotal = (float) $request->regular_hours;
+        $data['regular_hours'] = $newTotal;
+
+        // Automatically distribute these hours across weekdays
+        $data['daily_breakdown'] = $this->distributeHoursEvenly(
+            $timesheet->from_date, 
+            $timesheet->to_date, 
+            $newTotal
+        );
     }
 
+    $timesheet->update($data);
+
+    return response()->json([
+        'status' => true, 
+        'message' => 'Timesheet updated successfully',
+        'new_total' => $data['regular_hours'] ?? $timesheet->regular_hours
+    ]);
+}
+
+/**
+ * Helper to spread total hours across weekdays
+ */
+private function distributeHoursEvenly($start, $end, $totalHours)
+{
+    $period = \Carbon\CarbonPeriod::create($start, $end);
+    $weekdays = 0;
+    $dailyData = [];
+
+    // 1. Count Weekdays
+    foreach ($period as $date) {
+        if ($date->isWeekday()) {
+            $weekdays++;
+        }
+    }
+
+    // 2. Calculate Hours Per Day
+    $perDay = $weekdays > 0 ? round($totalHours / $weekdays, 2) : 0;
+    
+    // 3. Fill Array
+    foreach ($period as $date) {
+        $dateStr = $date->toDateString();
+        // Give hours to weekdays, 0 to weekends
+        $dailyData[$dateStr] = $date->isWeekday() ? $perDay : 0;
+    }
+
+    return $dailyData;
+}
     /**
      * Submit timesheets for approval
      */

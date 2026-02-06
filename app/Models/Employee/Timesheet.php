@@ -14,6 +14,7 @@ class Timesheet extends Model
 
     protected $fillable = [
         'organization_id',
+        'daily_breakdown',
         'attendance_id',
         'project_id',
         'task_id',
@@ -36,6 +37,7 @@ class Timesheet extends Model
         'overtime_hours' => 'decimal:2',
         'is_overtime' => 'boolean',
         'approved_at' => 'datetime',
+        'daily_breakdown' => 'array',
     ];
 
     /**
