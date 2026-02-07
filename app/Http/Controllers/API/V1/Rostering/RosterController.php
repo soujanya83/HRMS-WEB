@@ -36,8 +36,28 @@ class RosterController extends Controller
             'created_by' => 'required|exists:users,id',
         ]);
 
-      
-
+        $date = \Carbon\Carbon::parse($validated['roster_date']);
+        $dayOfWeek = $date->dayOfWeek;
+        $holidayDates = \App\Models\HolidayModel::where('organization_id', $validated['organization_id'])
+            ->where('is_active', true)
+            ->pluck('holiday_date')
+            ->map(function ($d) { return \Carbon\Carbon::parse($d)->toDateString(); })
+            ->toArray();
+        $reason = null;
+        if ($dayOfWeek === \Carbon\Carbon::SUNDAY) {
+            $reason = 'sunday';
+        } elseif ($dayOfWeek === \Carbon\Carbon::SATURDAY) {
+            $reason = 'saturday';
+        } elseif (in_array($date->toDateString(), $holidayDates)) {
+            $reason = 'holiday';
+        }
+        if ($reason) {
+            return response()->json([
+                'error' => 'Cannot create roster for this day',
+                'reason' => $reason,
+                'date' => $date->toDateString()
+            ], 422);
+        }
         $roster = Roster::create($validated);
         return response()->json(['success' => true, 'data' => $roster], 201);
     }
@@ -94,10 +114,52 @@ class RosterController extends Controller
             'rosters.*.created_by' => 'required|exists:users,id',
         ]);
         $created = [];
+        $updated = [];
+        $skipped = [];
         foreach ($validated['rosters'] as $row) {
-            $created[] = Roster::create($row);
+            $date = \Carbon\Carbon::parse($row['roster_date']);
+            $dayOfWeek = $date->dayOfWeek;
+            $holidayDates = \App\Models\HolidayModel::where('organization_id', $row['organization_id'])
+                ->where('is_active', true)
+                ->pluck('holiday_date')
+                ->map(function ($d) { return \Carbon\Carbon::parse($d)->toDateString(); })
+                ->toArray();
+            $reason = null;
+            if ($dayOfWeek === \Carbon\Carbon::SUNDAY) {
+                $reason = 'sunday';
+            } elseif ($dayOfWeek === \Carbon\Carbon::SATURDAY) {
+                $reason = 'saturday';
+            } elseif (in_array($date->toDateString(), $holidayDates)) {
+                $reason = 'holiday';
+            }
+            if ($reason) {
+                $skipped[] = [
+                    'roster_date' => $date->toDateString(),
+                    'employee_id' => $row['employee_id'],
+                    'reason' => $reason,
+                ];
+                continue;
+            }
+            // Check for existing roster
+            $existing = Roster::where('employee_id', $row['employee_id'])
+                ->where('roster_date', $date->toDateString())
+                ->first();
+            if ($existing) {
+                $existing->fill($row);
+                $existing->save();
+                $updated[] = $existing;
+            } else {
+                $created[] = Roster::create($row);
+            }
         }
-        return response()->json(['success' => true, 'data' => $created, 'count' => count($created)], 201);
+        return response()->json([
+            'success' => true,
+            'created' => $created,
+            'updated' => $updated,
+            'created_count' => count($created),
+            'updated_count' => count($updated),
+            'skipped' => $skipped
+        ], 201);
     }
 
     // Get rosters by employee (with date range option)
@@ -132,26 +194,33 @@ class RosterController extends Controller
             }
 
             $created = [];
+            $holidayDates = \App\Models\HolidayModel::where('organization_id', $period->organization_id)
+                ->where('is_active', true)
+                ->pluck('holiday_date')
+                ->map(function ($d) { return Carbon::parse($d)->toDateString(); })
+                ->toArray();
 
             foreach ($validated['employee_ids'] as $employeeId) {
                 for ($date = Carbon::parse($period->start_date);
                     $date->lte($period->end_date);
                     $date->addDay()) {
-
+                    $dayOfWeek = $date->dayOfWeek;
+                    $dateStr = $date->toDateString();
+                    // Skip Saturday (6), Sunday (0), and holidays
+                    if ($dayOfWeek === Carbon::SUNDAY || $dayOfWeek === Carbon::SATURDAY || in_array($dateStr, $holidayDates)) {
+                        continue;
+                    }
                     if (
                         Roster::where('employee_id', $employeeId)
-                            ->where('roster_date', $date->toDateString())
+                            ->where('roster_date', $dateStr)
                             ->exists()
                     ) continue;
-
                     $created[] = Roster::create([
                         'organization_id' => $period->organization_id,
                         'roster_period_id' => $period->id,
                         'employee_id' => $employeeId,
                         'shift_id' => $validated['shift_id'],
-                        'roster_date' => $date->toDateString(),
-                       // 'start_time' => $validated['start_time'],
-                        //'end_time' => $validated['end_time'],
+                        'roster_date' => $dateStr,
                         'created_by' => $validated['created_by'],
                     ]);
                 }
