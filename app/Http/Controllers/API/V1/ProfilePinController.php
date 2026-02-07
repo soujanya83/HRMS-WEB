@@ -4,6 +4,10 @@ namespace App\Http\Controllers\API\V1;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use App\Models\User;
+use App\Notifications\ProfilePinOtpNotification;
+
 
 class ProfilePinController extends Controller
 {
@@ -56,25 +60,29 @@ class ProfilePinController extends Controller
     /**
      * Forgot pin: send OTP to user's email for verification
      */
-    public function forgotPin(Request $request)
-    {
-        $request->validate([
-            'email' => 'required|email|exists:users,email',
-        ]);
+  public function forgotPin(Request $request)
+{
+    $request->validate([
+        'email' => 'required|email|exists:users,email',
+    ]);
 
-        $user = \App\Models\User::where('email', $request->email)->first();
-        if (!$user) {
-            return response()->json(['message' => 'User not found.'], 404);
-        }
+    $user = User::where('email', $request->email)->first();
 
-        $otp = rand(100000, 999999);
-        // Store OTP in cache for 10 minutes, keyed by user id
-        \Cache::put('profile_pin_otp_' . $user->id, $otp, now()->addMinutes(10));
-
-        $user->notify(new \App\Notifications\ProfilePinOtpNotification($otp));
-
-        return response()->json(['message' => 'OTP sent to your email. Please verify to reset your pin.']);
+    if (!$user) {
+        return response()->json(['message' => 'User not found.'], 404);
     }
+
+    $otp = rand(100000, 999999);
+
+    Cache::put('profile_pin_otp_' . $user->id, $otp, now()->addMinutes(10));
+
+    $user->notify(new ProfilePinOtpNotification($otp));
+
+    return response()->json([
+        'message' => 'OTP sent to your email.'
+    ]);
+}
+
 
     /**
      * Verify OTP and reset profile pin
@@ -87,13 +95,13 @@ class ProfilePinController extends Controller
             'pin' => 'required|digits:4',
         ]);
 
-        $user = \App\Models\User::where('email', $request->email)->first();
+        $user = User::where('email', $request->email)->first();
         if (!$user) {
             return response()->json(['message' => 'User not found.'], 404);
         }
 
         $cacheKey = 'profile_pin_otp_' . $user->id;
-        $cachedOtp = \Cache::get($cacheKey);
+        $cachedOtp = Cache::get($cacheKey);
         if (!$cachedOtp) {
             return response()->json(['message' => 'OTP expired or invalid.'], 400);
         }
@@ -104,7 +112,7 @@ class ProfilePinController extends Controller
         $user->profile_pin = password_hash($request->pin, PASSWORD_DEFAULT);
         $user->save();
         // Remove OTP from cache
-        \Cache::forget($cacheKey);
+        Cache::forget($cacheKey);
         return response()->json(['message' => 'Profile pin reset successfully.']);
     }
 }
