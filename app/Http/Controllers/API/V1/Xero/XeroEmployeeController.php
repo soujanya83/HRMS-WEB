@@ -381,6 +381,250 @@ public function pushApproved(Request $request)
 }
 
 
+public function pushApprovedForEmployee(Request $request)
+{
+    Log::info('Xero Timesheet Push for Specific Employee Started', [
+        'request_data' => $request->all()
+    ]);
+
+    $orgId = $request->organization_id;
+    $employeeId = $request->employee_id;
+
+    // ----------------------------------------------------
+    // 1. VALIDATIONS
+    // ----------------------------------------------------
+    $request->validate([
+        'organization_id' => 'required|exists:organizations,id',
+        'employee_id' => 'required|exists:employees,id'
+    ]);
+
+    if (!$orgId || !$employeeId) {
+        Log::error('Required parameters missing', [
+            'organization_id' => $orgId,
+            'employee_id' => $employeeId
+        ]);
+        return response()->json([
+            'status' => false,
+            'message' => 'organization_id and employee_id are required'
+        ], 422);
+    }
+
+    // ----------------------------------------------------
+    // 2. XERO CONNECTION
+    // ----------------------------------------------------
+    try {
+        $connection = XeroConnection::where('organization_id', $orgId)
+            ->where('is_active', 1)
+            ->firstOrFail();
+
+        Log::info('Active Xero connection found', [
+            'connection_id' => $connection->id,
+            'tenant_id' => $connection->tenant_id
+        ]);
+    } catch (\Exception $e) {
+        Log::error('Active Xero connection NOT found', [
+            'organization_id' => $orgId,
+            'error' => $e->getMessage()
+        ]);
+
+        return response()->json([
+            'status' => false,
+            'message' => 'Active Xero connection not found'
+        ], 404);
+    }
+
+    // ----------------------------------------------------
+    // 3. TOKEN REFRESH
+    // ----------------------------------------------------
+    $connection = app(\App\Services\Xero\XeroTokenService::class)
+        ->refreshIfNeeded($connection);
+
+    Log::info('Xero token checked/refreshed');
+
+    // ----------------------------------------------------
+    // 4. FETCH SPECIFIC EMPLOYEE TIMESHEETS
+    // ----------------------------------------------------
+    $timesheets = Timesheet::where('organization_id', $orgId)
+        ->where('employee_id', $employeeId)
+        ->where('status', 'submitted')
+        ->whereNull('xero_synced_at')
+        ->get();
+
+    Log::info('Employee timesheets fetched', [
+        'employee_id' => $employeeId,
+        'total_timesheets' => $timesheets->count()
+    ]);
+
+    if ($timesheets->isEmpty()) {
+        return response()->json([
+            'status' => false,
+            'message' => 'No pending timesheets found for this employee'
+        ], 404);
+    }
+
+    // ----------------------------------------------------
+    // 5. EMPLOYEE XERO CONNECTION CHECK
+    // ----------------------------------------------------
+    $empXero = EmployeeXeroConnection::where('employee_id', $employeeId)->first();
+
+    if (!$empXero || !$empXero->xero_employee_id || !$empXero->OrdinaryEarningsRateID) {
+        Log::warning('Employee Xero data missing/incomplete', [
+            'employee_id' => $employeeId
+        ]);
+        return response()->json([
+            'status' => false,
+            'message' => 'Employee Xero connection incomplete or missing'
+        ], 422);
+    }
+
+    // ----------------------------------------------------
+    // 6. PREPARE TIMESHEET DATA (SAME LOGIC)
+    // ----------------------------------------------------
+    $mainRecord = $timesheets->first();
+    $startDate = Carbon::parse($mainRecord->from_date)->toDateString();
+    $endDate = Carbon::parse($mainRecord->to_date)->toDateString();
+
+    // Build daily hours array
+    $savedDailyData = $mainRecord->daily_breakdown;
+    if (is_string($savedDailyData)) {
+        $savedDailyData = json_decode($savedDailyData, true);
+    }
+    if (!is_array($savedDailyData)) {
+        $savedDailyData = [];
+    }
+
+    $period = CarbonPeriod::create($startDate, $endDate);
+    $dailyHours = [];
+
+    foreach ($period as $date) {
+        $dateStr = $date->toDateString();
+        $hours = isset($savedDailyData[$dateStr]) ? (float) $savedDailyData[$dateStr] : 0;
+        $dailyHours[] = $hours;
+    }
+
+    Log::info('Daily hours prepared for Xero', [
+        'employee_id' => $employeeId,
+        'start_date' => $startDate,
+        'daily_hours' => $dailyHours
+    ]);
+
+    // ----------------------------------------------------
+    // 7. PAYLOAD
+    // ----------------------------------------------------
+    $payload = [
+        [
+            'EmployeeID' => $empXero->xero_employee_id,
+            'StartDate' => $startDate,
+            'EndDate' => $endDate,
+            'Status' => 'DRAFT',
+            'TimesheetLines' => [
+                [
+                    'EarningsRateID' => $empXero->OrdinaryEarningsRateID,
+                    'NumberOfUnits' => $dailyHours,
+                ]
+            ]
+        ]
+    ];
+
+    Log::info('Xero timesheet payload prepared', [
+        'employee_id' => $employeeId,
+        'payload' => $payload
+    ]);
+
+    // ----------------------------------------------------
+    // 8. XERO API CALL
+    // ----------------------------------------------------
+    $response = Http::withHeaders([
+        'Authorization' => 'Bearer ' . $connection->access_token,
+        'Xero-Tenant-Id' => $connection->tenant_id,
+        'Accept' => 'application/json',
+    ])->post('https://api.xero.com/payroll.xro/1.0/Timesheets', $payload);
+
+    Log::info('Xero API response received', [
+        'employee_id' => $employeeId,
+        'status' => $response->status(),
+        'response' => $response->json()
+    ]);
+
+    if (!$response->successful()) {
+        Log::error('Xero API timesheet creation failed', [
+            'employee_id' => $employeeId,
+            'status' => $response->status(),
+            'response' => $response->body()
+        ]);
+        return response()->json([
+            'status' => false,
+            'message' => 'Failed to push timesheet to Xero',
+            'error' => $response->json()
+        ], 500);
+    }
+
+    // ----------------------------------------------------
+    // 9. SUCCESS HANDLING
+    // ----------------------------------------------------
+    $xeroResponse = $response->json();
+    $xero = $xeroResponse['Timesheets'][0] ?? null;
+
+    if (!$xero || !isset($xero['TimesheetID'])) {
+        Log::error('Xero response missing TimesheetID', [
+            'employee_id' => $employeeId
+        ]);
+        return response()->json([
+            'status' => false,
+            'message' => 'Invalid Xero response'
+        ], 500);
+    }
+
+    XeroTimesheet::create([
+        'organization_id' => $orgId,
+        'employee_xero_connection_id' => $empXero->id,
+        'xero_connection_id' => $connection->id,
+        'xero_timesheet_id' => $xero['TimesheetID'],
+        'xero_employee_id' => $empXero->xero_employee_id,
+        'start_date' => $startDate,
+        'end_date' => $endDate,
+        'total_hours' => array_sum($dailyHours),
+        'ordinary_hours' => array_sum($dailyHours),
+        'status' => 'CREATED',
+        'xero_data' => $xero,
+        'is_synced' => true,
+        'last_synced_at' => now(),
+    ]);
+
+    // Mark local timesheets as pushed
+    Timesheet::whereIn('id', $timesheets->pluck('id'))->update([
+        'xero_synced_at' => now(),
+        'xero_status' => 'pushed'
+    ]);
+
+    Log::info('Timesheet successfully pushed to Xero for employee', [
+        'employee_id' => $employeeId,
+        'timesheet_id' => $xero['TimesheetID']
+    ]);
+
+    // ----------------------------------------------------
+    // 10. FINAL RESPONSE
+    // ----------------------------------------------------
+    Log::info('Xero Timesheet Push for Employee Completed', [
+        'organization_id' => $orgId,
+        'employee_id' => $employeeId,
+        'xero_timesheet_id' => $xero['TimesheetID']
+    ]);
+
+    return response()->json([
+        'status' => true,
+        'message' => 'Timesheet pushed successfully',
+        'employee_id' => $employeeId,
+        'xero_timesheet_id' => $xero['TimesheetID'],
+        'total_hours' => array_sum($dailyHours),
+        'timesheets_synced' => $timesheets->count()
+    ]);
+}
+
+
+
+
+
  public function get_all_pay_periods(Request $request)
     {
         $request->validate([
