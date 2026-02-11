@@ -26,66 +26,175 @@ class FaceController extends Controller
 
         $employee = Employee::findOrFail($request->employee_id);
 
-        if (!$request->filled('face_embedding') && $request->filled('profile_image_url')) {
+        $faceOld = !is_null($employee->face_embedding);
+        $imgOld = !is_null($employee->profile_image_url);
+        $faceNew = $request->filled('face_embedding');
+        $imgNew = $request->filled('profile_image_url');
+
+        $faceChanged = $faceNew && ($employee->face_embedding !== $request->face_embedding);
+        $imgChanged = $imgNew && ($employee->profile_image_url !== $request->profile_image_url);
+
+        // Both changed (both old, both new, or one new one updated)
+        if ($faceChanged && $imgChanged) {
+            $faceWasNull = is_null($employee->face_embedding);
+            $imgWasNull = is_null($employee->profile_image_url);
+            $employee->face_embedding = $request->face_embedding;
+            $employee->profile_image_url = $request->profile_image_url;
+            $employee->is_face_registered = true;
+            $employee->save();
+            if ($faceWasNull && ! $imgWasNull) {
+                return response()->json([
+                    'employee_id' => $employee->id,
+                    'success' => true,
+                    'message' => 'Image updated, face registered',
+                    'data' => [
+                        'employee_id' => $employee->id,
+                        'is_face_registered' => true,
+                        'profile_image_url' => $employee->profile_image_url,
+                    ]
+                ], 200);
+            } else if (! $faceWasNull && $imgWasNull) {
+                return response()->json([
+                    'employee_id' => $employee->id,
+                    'success' => true,
+                    'message' => 'Face updated, image registered',
+                    'data' => [
+                        'employee_id' => $employee->id,
+                        'is_face_registered' => true,
+                        'profile_image_url' => $employee->profile_image_url,
+                    ]
+                ], 200);
+            } else if ($faceWasNull && $imgWasNull) {
+                return response()->json([
+                    'employee_id' => $employee->id,
+                    'success' => true,
+                    'message' => 'Face and image registered successfully',
+                    'data' => [
+                        'employee_id' => $employee->id,
+                        'is_face_registered' => true,
+                        'profile_image_url' => $employee->profile_image_url,
+                    ]
+                ], 201);
+            } else {
+                return response()->json([
+                    'employee_id' => $employee->id,
+                    'success' => true,
+                    'message' => 'Face and image updated successfully',
+                    'data' => [
+                        'employee_id' => $employee->id,
+                        'is_face_registered' => true,
+                        'profile_image_url' => $employee->profile_image_url,
+                    ]
+                ], 200);
+            }
+        }
+
+        // Only face changed
+        if ($faceChanged && !$imgChanged) {
+            $faceWasNull = is_null($employee->face_embedding);
+            $employee->face_embedding = $request->face_embedding;
+            $employee->is_face_registered = true;
+            $employee->save();
+            $imgRegistered = !is_null($employee->profile_image_url);
+            if ($faceWasNull) {
+                return response()->json([
+                    'employee_id' => $employee->id,
+                    'success' => true,
+                    'message' => $imgRegistered ? 'Face registered, image same as already saved one' : 'Face registered',
+                    'data' => [
+                        'employee_id' => $employee->id,
+                        'is_face_registered' => true,
+                        'profile_image_url' => $employee->profile_image_url,
+                    ]
+                ], 201);
+            } else {
+                return response()->json([
+                    'employee_id' => $employee->id,
+                    'success' => true,
+                    'message' => $imgRegistered ? 'Face updated, image same as already saved one' : 'Face updated',
+                    'data' => [
+                        'employee_id' => $employee->id,
+                        'is_face_registered' => true,
+                        'profile_image_url' => $employee->profile_image_url,
+                    ]
+                ], 200);
+            }
+        }
+
+        // Only image changed
+        if (!$faceChanged && $imgChanged) {
+            $imgWasNull = is_null($employee->profile_image_url);
             $employee->profile_image_url = $request->profile_image_url;
             $employee->save();
+            $faceRegistered = !is_null($employee->face_embedding);
+            if ($imgWasNull) {
+                return response()->json([
+                    'employee_id' => $employee->id,
+                    'success' => true,
+                    'message' => $faceRegistered ? 'Image registered, face same as already saved one' : 'Image registered',
+                    'data' => [
+                        'employee_id' => $employee->id,
+                        'is_face_registered' => $faceRegistered,
+                        'profile_image_url' => $employee->profile_image_url,
+                    ]
+                ], 201);
+            } else {
+                return response()->json([
+                    'employee_id' => $employee->id,
+                    'success' => true,
+                    'message' => $faceRegistered ? 'Image updated, face same as already saved one' : 'Image updated',
+                    'data' => [
+                        'employee_id' => $employee->id,
+                        'is_face_registered' => $faceRegistered,
+                        'profile_image_url' => $employee->profile_image_url,
+                    ]
+                ], 200);
+            }
+        }
 
+        // Both old, nothing new or no change
+        if (($faceOld || $imgOld) && !$faceChanged && !$imgChanged) {
             return response()->json([
-                'success' => true,
-                'message' => 'Profile image updated successfully',
-                'data'    => [
-                    'employee_id'        => $employee->id,
+                'employee_id' => $employee->id,
+                'success' => false,
+                'message' => 'Nothing new to update',
+                'data' => [
+                    'employee_id' => $employee->id,
                     'is_face_registered' => $employee->is_face_registered,
-                    'profile_image_url'  => $employee->profile_image_url,
+                    'profile_image_url' => $employee->profile_image_url,
                 ]
             ], 200);
         }
 
-
-        if ($request->filled('face_embedding')) {
-
-            if ($employee->is_face_registered) {
-
-                if ($request->filled('profile_image_url')) {
-                    $employee->profile_image_url = $request->profile_image_url;
-                    $employee->save();
-
-                    return response()->json([
-                        'success' => true,
-                        'message' => 'Profile image updated successfully. Face already registered. Please contact organisation. ',
-                        'data'    => [
-                            'employee_id'        => $employee->id,
-                            'is_face_registered' => true,
-                            'profile_image_url'  => $employee->profile_image_url,
-                        ]
-                    ], 200);
-                }
-
-                
-                return response()->json([
-                    'employee_id'        => $employee->id,
-                    'success' => false,
-                    'message' => 'Face already registered. Please contact organisation.'
-                ], 409);
-            }
-
-            // First-time face registration
+        // Only face new, no image ever
+        if ($faceNew && !$imgNew && !$imgOld) {
             $employee->face_embedding = $request->face_embedding;
-            $both = $request->filled('profile_image_url');
-            if ($both) {
-                $employee->profile_image_url = $request->profile_image_url;
-            }
             $employee->is_face_registered = true;
             $employee->save();
-
             return response()->json([
-                'employee_id'        => $employee->id,
+                'employee_id' => $employee->id,
                 'success' => true,
-                'message' => $both ? 'Face and profile image registered successfully' : 'Face registered successfully',
-                'data'    => [
-                    'employee_id'        => $employee->id,
+                'message' => 'Face registered successfully',
+                'data' => [
+                    'employee_id' => $employee->id,
                     'is_face_registered' => true,
-                    'profile_image_url'  => $employee->profile_image_url,
+                    'profile_image_url' => $employee->profile_image_url,
+                ]
+            ], 201);
+        }
+
+        // Only image new, no face ever
+        if (!$faceNew && $imgNew && !$faceOld) {
+            $employee->profile_image_url = $request->profile_image_url;
+            $employee->save();
+            return response()->json([
+                'employee_id' => $employee->id,
+                'success' => true,
+                'message' => 'Profile image registered successfully',
+                'data' => [
+                    'employee_id' => $employee->id,
+                    'is_face_registered' => $employee->is_face_registered,
+                    'profile_image_url' => $employee->profile_image_url,
                 ]
             ], 201);
         }
