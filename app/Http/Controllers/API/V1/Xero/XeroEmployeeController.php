@@ -1671,6 +1671,71 @@ public function employeeshow($id)
 
 
 
+//--------------------------------------------------------------------------------
 
+ public function getByOrganization(Request $request)
+    {
+        try {
+
+            // Validate request
+            $request->validate([
+                'organization_id' => 'required|integer'
+            ]);
+
+            $organizationId = $request->organization_id;
+
+            // Fetch data
+            $payRuns = XeroPayRun::where('organization_id', $organizationId)
+                                    ->orderBy('id', 'desc')
+                                    ->get();
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Pay runs fetched successfully',
+                'data' => $payRuns
+            ], 200);
+
+        } catch (\Exception $e) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Something went wrong',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+
+    public function getByOrganizationpayslip(Request $request)
+    {
+        try {
+
+            // Validate request
+            $request->validate([
+                'organization_id' => 'required|integer'
+            ]);
+
+            $organizationId = $request->organization_id;
+
+            // Fetch payslips by organization_id
+            $payslips = XeroPayslip::where('organization_id', $organizationId)
+                                    ->orderBy('id', 'desc')
+                                    ->get();
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Payslips fetched successfully',
+                'data' => $payslips
+            ], 200);
+
+        } catch (\Exception $e) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Something went wrong',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 
    }
