@@ -22,6 +22,8 @@ use App\Models\XeroPayRun;
 use App\Models\XeroPayslip;
 use Carbon\CarbonPeriod;
 use App\Models\PayPeriod; // Import the new model
+use App\Models\XeroLeaveType;
+use App\Models\XeroLeaveApplication;
 
 
 class XeroEmployeeController extends Controller
@@ -1510,6 +1512,165 @@ public function employeeshow($id)
         'data' => $payslip
     ]);
 }
+
+
+
+
+//-----------------------------------------------------------------
+//for leaves --------------------------------
+
+
+// ----------------------------------------------------------------
+    // 1. SYNC LEAVE TYPES (Configuration Page ke liye)
+    // ----------------------------------------------------------------
+    public function syncLeaveTypes(Request $request)
+    {
+        $request->validate(['organization_id' => 'required']);
+        $orgId = $request->organization_id;
+
+        $connection = $this->getXeroConnection($orgId);
+
+        $response = Http::withHeaders($this->getHeaders($connection))
+            ->get('https://api.xero.com/payroll.xro/1.0/LeaveTypes');
+
+        if (!$response->successful()) {
+            return response()->json(['status' => false, 'message' => 'Failed to fetch types'], 500);
+        }
+
+        $types = $response->json()['LeaveTypes'] ?? [];
+
+        foreach ($types as $type) {
+            XeroLeaveType::updateOrCreate(
+                ['xero_leave_type_id' => $type['LeaveTypeID']],
+                [
+                    'organization_id' => $orgId,
+                    'name' => $type['Name'],
+                    'type_of_units' => $type['TypeOfUnits'] ?? 'Hours',
+                    'is_paid_leave' => $type['IsPaidLeave'] ?? true,
+                    'show_on_payslip' => $type['ShowOnPayslip'] ?? true,
+                ]
+            );
+        }
+
+        return response()->json([
+            'status' => true, 
+            'message' => 'Leave Types Synced Successfully',
+            'data' => XeroLeaveType::where('organization_id', $orgId)->get()
+        ]);
+    }
+
+    // ----------------------------------------------------------------
+    // 2. CREATE/PUSH LEAVE TO XERO (Jab Manager Approve kare)
+    // ----------------------------------------------------------------
+    public function applyLeave(Request $request)
+    {
+        $request->validate([
+            'organization_id' => 'required',
+            'employee_id'     => 'required', // Local Employee ID
+            'leave_type_id'   => 'required', // Xero Leave Type ID (Select from DB)
+            'start_date'      => 'required|date',
+            'end_date'        => 'required|date',
+            'description'     => 'nullable|string',
+            'local_leave_id'  => 'nullable' // Optional: Link to local HRMS
+        ]);
+
+        $orgId = $request->organization_id;
+
+        // 1. Get Connections
+        $connection = $this->getXeroConnection($orgId);
+        $empConn = EmployeeXeroConnection::where('employee_id', $request->employee_id)->firstOrFail();
+
+        // 2. Prepare Payload
+        $payload = [
+            [
+                "EmployeeID" => $empConn->xero_employee_id,
+                "LeaveTypeID" => $request->leave_type_id,
+                "Title" => $request->description ?? 'Leave Application',
+                "StartDate" => $request->start_date,
+                "EndDate" => $request->end_date,
+                "Description" => "Applied via HRMS"
+            ]
+        ];
+
+        // 3. Send to Xero
+        $response = Http::withHeaders($this->getHeaders($connection))
+            ->post('https://api.xero.com/payroll.xro/1.0/LeaveApplications', $payload);
+
+        if (!$response->successful()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Xero Error',
+                'details' => $response->json()
+            ], $response->status());
+        }
+
+        // 4. Save Response to DB
+        $xeroData = $response->json()['LeaveApplications'][0];
+
+        $leaveApp = XeroLeaveApplication::create([
+            'organization_id' => $orgId,
+            'employee_xero_connection_id' => $empConn->id,
+            'xero_connection_id' => $connection->id,
+            'xero_leave_id' => $xeroData['LeaveApplicationID'],
+            'xero_employee_id' => $empConn->xero_employee_id,
+            'xero_leave_type_id' => $request->leave_type_id,
+            'start_date' => $request->start_date,
+            'end_date' => $request->end_date,
+            'status' => 'APPROVED', // Usually pushes as Approved
+            'title' => $request->description,
+            'xero_data' => $xeroData,
+            'is_synced' => true,
+            'last_synced_at' => now(),
+            // 'local_leave_id' => $request->local_leave_id // Uncomment if you added the column
+        ]);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Leave pushed to Xero successfully',
+            'data' => $leaveApp
+        ]);
+    }
+
+    // ----------------------------------------------------------------
+    // 3. FETCH LEAVES (List View)
+    // ----------------------------------------------------------------
+    public function index(Request $request)
+    {
+        $query = XeroLeaveApplication::with('employeeConnection.employee');
+
+        if ($request->has('organization_id')) {
+            $query->where('organization_id', $request->organization_id);
+        }
+        
+        // Filter by specific employee
+        if ($request->has('employee_id')) {
+            $query->whereHas('employeeConnection', function($q) use ($request){
+                $q->where('employee_id', $request->employee_id);
+            });
+        }
+
+        return response()->json([
+            'status' => true,
+            'data' => $query->orderByDesc('start_date')->get()
+        ]);
+    }
+
+    // --- Private Helpers ---
+    private function getXeroConnection($orgId) {
+        $connection = XeroConnection::where('organization_id', $orgId)->where('is_active', 1)->firstOrFail();
+        return app(\App\Services\Xero\XeroTokenService::class)->refreshIfNeeded($connection);
+    }
+
+    private function getHeaders($connection) {
+        return [
+            'Authorization' => 'Bearer ' . $connection->access_token,
+            'Xero-Tenant-Id' => $connection->tenant_id,
+            'Accept' => 'application/json'
+        ];
+    }
+
+
+
 
 
    }

@@ -192,6 +192,17 @@ Route::prefix('v1')->group(function () {
 
         //  Route::get('/xero/payslips', [XeroEmployeeController::class, 'payslips']);
 
+        //leave of XEROOOOO ----------------
+
+        // 1. Sync Leave Types (Admin Config Page)
+            Route::post('/xero/leaves/sync-types', [XeroEmployeeController::class, 'syncLeaveTypes']);
+
+            // 2. Get All Leaves / Employee Leaves (History)
+            Route::get('/xero/leaves', [XeroEmployeeController::class, 'index']);
+
+            // 3. Apply/Push Leave to Xero (Manager Approval Action)
+            Route::post('/xero/leaves/apply', [XeroEmployeeController::class, 'applyLeave']);
+
 
 
 

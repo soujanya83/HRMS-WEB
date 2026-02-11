@@ -14,6 +14,7 @@ class XeroLeaveApplication extends Model
 
     protected $fillable = [
         'organization_id',
+        'local_leave_id',
         'employee_xero_connection_id',
         'xero_connection_id',
         'xero_leave_id',
