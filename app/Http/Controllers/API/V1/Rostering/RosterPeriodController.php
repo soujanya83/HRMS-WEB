@@ -19,15 +19,13 @@ class RosterPeriodController extends Controller
             'created_by' => 'required|exists:users,id',
         ]);
 
+        $start = Carbon::parse($validated['start_date']);
         if ($validated['type'] === 'weekly') {
-            $start = Carbon::parse($validated['start_date'])->startOfWeek();
-            $end   = $start->copy()->endOfWeek();
+            $end = $start->copy()->addDays(6)->endOfDay();
         } elseif ($validated['type'] === 'fortnightly') {
-            $start = Carbon::parse($validated['start_date'])->startOfWeek();
-            $end   = $start->copy()->addDays(13)->endOfDay(); // 2 weeks (14 days)
+            $end = $start->copy()->addDays(13)->endOfDay(); // 2 weeks (14 days)
         } else {
-            $start = Carbon::parse($validated['start_date'])->startOfMonth();
-            $end   = $start->copy()->endOfMonth();
+            $end = $start->copy()->addDays($start->daysInMonth - 1)->endOfDay();
         }
 
         $period = RosterPeriod::create([

@@ -340,6 +340,22 @@ class AttendanceController extends Controller
             ->setTimezone($timezone)
             ->format('Y-m-d');
 
+                    
+        $dayOfWeek = Carbon::parse($dateInTz)->dayOfWeek;
+        $reason = null;
+        if ($dayOfWeek === Carbon::SUNDAY) {
+            $reason = 'sunday';
+        } elseif ($dayOfWeek === Carbon::SATURDAY) {
+            $reason = 'saturday';
+        }
+        if ($reason) {
+            return response()->json([
+                'error' => 'Cannot create attendance for this day',
+                'reason' => $reason,
+                'date' => $dateInTz
+            ], 422);
+        }
+
         /* ============================
          | 4. CHECK-IN / CHECK-OUT
          ============================ */
@@ -421,8 +437,8 @@ class AttendanceController extends Controller
 
      if (!$attendance) {
 
-      // ❌ Check-out without check-in
-    if ($checkOutTime) {
+    // ❌ If checkout exists but no checkin at all
+    if (!$checkInTime && $checkOutTime) {
         return response()->json([
             'success' => false,
             'message' => 'Check-in is required before check-out.',
@@ -434,13 +450,14 @@ class AttendanceController extends Controller
         'organization_id'  => $employee->organization_id,
         'date'             => $dateInTz,
         'check_in'         => $checkInTime,
+        'check_out'        => $checkOutTime, 
         'status'           => $validated['status'],
         'notes'            => $validated['notes'] ?? null,
         'is_late'          => $is_late,
-        'total_work_hours' => 0,
+        'total_work_hours' => $totalWorkingHours,
     ]);
-
-    } else {
+ }
+ else {
 
         // Prevent double check-out
         if ($attendance->check_out) {
@@ -1437,6 +1454,22 @@ class AttendanceController extends Controller
             ], 422);
         }
 
+                // Weekend check only (no holiday)
+        $dayOfWeek = Carbon::parse($dateInTz)->dayOfWeek;
+        $reason = null;
+        if ($dayOfWeek === Carbon::SUNDAY) {
+            $reason = 'sunday';
+        } elseif ($dayOfWeek === Carbon::SATURDAY) {
+            $reason = 'saturday';
+        }
+        if ($reason) {
+            return response()->json([
+                'error' => 'Cannot clock in for this day',
+                'reason' => $reason,
+                'date' => $dateInTz
+            ], 422);
+        }
+
         /* ============================
          | 4. LATE CALCULATION
          ============================ */
@@ -1591,6 +1624,22 @@ class AttendanceController extends Controller
         $attendance = Attendance::where('employee_id', $employee->id)
             ->where('date', $dateInTz)
             ->first();
+                    // Weekend check only (no holiday)
+        $dayOfWeek = Carbon::parse($dateInTz)->dayOfWeek;
+        $reason = null;
+        if ($dayOfWeek === Carbon::SUNDAY) {
+            $reason = 'sunday';
+        } elseif ($dayOfWeek === Carbon::SATURDAY) {
+            $reason = 'saturday';
+        }
+        if ($reason) {
+            return response()->json([
+                'error' => 'Cannot clock out for this day',
+                'reason' => $reason,
+                'date' => $dateInTz
+            ], 422);
+        }
+
 
         if (!$attendance || !$attendance->check_in) {
             return response()->json([
