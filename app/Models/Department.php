@@ -19,7 +19,8 @@ class Department extends Model
     protected $fillable = [
         'organization_id',
         'name',
-        'description',
+        'age_group',
+        'color_code',
     ];
 
     /**

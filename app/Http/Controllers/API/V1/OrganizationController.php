@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Exception;
+use Illuminate\Support\Facades\Hash;
+
 
 class OrganizationController extends Controller
 {
@@ -115,18 +117,30 @@ class OrganizationController extends Controller
     {
         try {
             $user = Auth::user();
-            $data = array_merge($request->validated(), ['user_id' => $user->id]);
+
+            $data = array_merge(
+                $request->validated(),
+                [
+                    'user_id' => $user->id,
+                    'password' => Hash::make('test@123') // hashed password
+                ]
+            );
+
             $organization = Organization::create($data);
+
             return response()->json([
                 'success' => true,
                 'data' => $organization,
                 'message' => 'Organization created successfully.'
             ], 201);
+
         } catch (Exception $e) {
+
             return response()->json([
                 'success' => false,
                 'message' => 'An error occurred while creating the organization: ' . $e->getMessage()
             ], 500);
+
         }
     }
 
