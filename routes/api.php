@@ -380,6 +380,7 @@ Route::prefix('v1')->group(function () {
             Route::post('/{id}/documents', [EmployeeController::class, 'addDocument']);
             Route::delete('/{id}/documents/{docId}', [EmployeeController::class, 'deleteDocument']);
             Route::post('/bulk', [EmployeeController::class, 'bulkCreate']);
+            Route::post('/basic/store-update',[EmployeeController::class, 'storeOrUpdateBasic']);
         });
 
         Route::prefix('attendance')->group(function () {

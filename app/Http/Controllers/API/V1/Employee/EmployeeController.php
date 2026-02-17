@@ -28,7 +28,6 @@ use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Auth\Passwords\PasswordBroker;
 use Throwable;
-
 use Exception;
 
 class EmployeeController extends Controller
@@ -246,6 +245,8 @@ class EmployeeController extends Controller
         return $this->serverError('Failed to create employee', $e);
     }
 }
+
+
     public function update(Request $request, $id): JsonResponse
     {
         try {
@@ -530,4 +531,227 @@ class EmployeeController extends Controller
             'message' => 'Xero synchronization not yet implemented'
         ], 200);
     }
+
+
+
+
+
+    public function storeOrUpdateBasic(Request $request): JsonResponse
+    {
+        try {
+
+            $employeeId = $request->input('employee_id'); // optional for update
+            $userId = $request->input('user_id');
+
+            $rules = [
+
+                'employee_id' => ['nullable', 'exists:employees,id'],
+
+                'organization_id' => ['required', 'exists:organizations,id'],
+
+                'user_id' => [
+                    'nullable',
+                    'exists:users,id',
+                    Rule::unique('employees', 'user_id')->ignore($employeeId)
+                ],
+
+                'applicant_id' => [
+                    'nullable',
+                    'exists:applicants,id',
+                    Rule::unique('employees', 'applicant_id')->ignore($employeeId)
+                ],
+
+                'first_name' => ['required', 'string', 'max:190'],
+                'last_name' => ['required', 'string', 'max:190'],
+
+                'personal_email' => [
+                    'required',
+                    'email',
+                    'max:190',
+                    Rule::unique('users', 'email')->ignore($userId),
+                    Rule::unique('employees', 'personal_email')->ignore($employeeId),
+                ],
+
+                'phone_number' => ['required', 'string', 'max:20'],
+
+                'date_of_birth' => ['required', 'date'],
+
+                'gender' => [
+                    'required',
+                    Rule::in(['Male', 'Female', 'Other', 'Prefer not to say'])
+                ],
+
+                'address' => ['required', 'string', 'max:1000'],
+
+                'emergency_contact_name' => ['nullable', 'string', 'max:255'],
+
+                'emergency_contact_phone' => ['nullable', 'string', 'max:30'],
+
+                'emergency_contact_relationship' => ['nullable', 'string', 'max:100'],
+
+            ];
+
+            $validated = $request->validate($rules);
+
+            $result = DB::transaction(function () use ($validated, $employeeId, $userId) {
+
+                $user = null;
+                $rawPassword = null;
+
+                /*
+                |--------------------------------------------------------------------------
+                | USER CREATE OR USE EXISTING
+                |--------------------------------------------------------------------------
+                */
+
+                if ($userId) {
+
+                    $user = User::findOrFail($userId);
+
+                    if ($user->email !== $validated['personal_email']) {
+                        throw ValidationException::withMessages([
+                            'personal_email' => ['Email does not match existing user']
+                        ]);
+                    }
+
+                    // Update name if changed
+                    $user->update([
+                        'name' => $validated['first_name'] . ' ' . $validated['last_name'],
+                    ]);
+
+                } else {
+
+                    $rawPassword = 12345678;
+
+                    $user = User::create([
+                        'name' => $validated['first_name'] . ' ' . $validated['last_name'],
+                        'email' => $validated['personal_email'],
+                        'password' => Hash::make($rawPassword),
+                    ]);
+
+                    $user->assignRoleForOrganization(
+                        'employee',
+                        $validated['organization_id']
+                    );
+                }
+
+
+                /*
+                |--------------------------------------------------------------------------
+                | EMPLOYEE CREATE OR UPDATE
+                |--------------------------------------------------------------------------
+                */
+
+                $employeeData = [
+
+                    'organization_id' => $validated['organization_id'],
+                    'user_id' => $user->id,
+                    'applicant_id' => $validated['applicant_id'] ?? null,
+
+                    'first_name' => $validated['first_name'],
+                    'last_name' => $validated['last_name'],
+                    'personal_email' => $validated['personal_email'],
+                    'phone_number' => $validated['phone_number'],
+                    'date_of_birth' => $validated['date_of_birth'],
+                    'gender' => $validated['gender'],
+                    'address' => $validated['address'],
+
+                    'emergency_contact_name' =>
+                        $validated['emergency_contact_name'] ?? null,
+
+                    'emergency_contact_phone' =>
+                        $validated['emergency_contact_phone'] ?? null,
+
+                    'emergency_contact_relationship' =>
+                        $validated['emergency_contact_relationship'] ?? null,
+                ];
+
+                if ($employeeId) {
+
+                    $employee = Employee::findOrFail($employeeId);
+
+                    $employee->update($employeeData);
+
+                    $action = 'updated';
+
+                } else {
+
+                    $employee = Employee::create($employeeData);
+
+                    $action = 'created';
+                }
+
+                return [
+                    'user' => $user,
+                    'employee' => $employee,
+                    'raw_password' => $rawPassword,
+                    'action' => $action
+                ];
+            });
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | SEND EMAIL ONLY IF USER CREATED
+            |--------------------------------------------------------------------------
+            */
+
+            if (!empty($result['raw_password'])) {
+
+                try {
+
+                    $mailable = new WelcomeEmployee(
+                        $result['user'],
+                        $result['raw_password'],
+                        null
+                    );
+
+                    Mail::to($result['user']->email)->send($mailable);
+
+                } catch (Throwable $mailEx) {
+
+                    Log::error(
+                        'Welcome email failed: ' . $mailEx->getMessage()
+                    );
+                }
+            }
+
+
+            return response()->json([
+
+                'success' => true,
+
+                'message' =>
+                    'Employee basic details '
+                    . $result['action']
+                    . ' successfully',
+
+                'data' => [
+
+                    'user' => $result['user'],
+                    'employee' => $result['employee'],
+
+                    'generated_password' =>
+                        $result['raw_password'] ?? null
+                ]
+
+            ], 200);
+
+
+        } catch (ValidationException $e) {
+
+            return $this->validationError($e);
+
+        } catch (Exception $e) {
+
+            return $this->serverError(
+                'Failed to save employee basic details',
+                $e
+            );
+        }
+    }
+
+
+
+
 }

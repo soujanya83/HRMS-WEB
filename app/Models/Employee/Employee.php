@@ -52,6 +52,7 @@ class Employee extends Model
         'visa_expiry_date',
         'emergency_contact_name',
         'emergency_contact_phone',
+        'emergency_contact_relationship',
         'face_embedding',
         'is_face_registered',
         'profile_image_url',
