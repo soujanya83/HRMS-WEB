@@ -20,14 +20,14 @@ class OrganizationController extends Controller
     /**
      * Display a listing of the resource.
      */
-  public function index()
+public function index()
 {
     try {
         $user = Auth::user();
 
-        // =========================================
-        // 1️⃣ IF USER IS ORGANIZATION
-        // =========================================
+        // =====================================
+        // 1. IF USER IS ORGANIZATION
+        // =====================================
         if ($user->is_organization == 1) {
 
             $organizations = Organization::where('user_id', $user->id)->get();
@@ -39,10 +39,16 @@ class OrganizationController extends Controller
             ], 200);
         }
 
-        // =========================================
-        // 2️⃣ IF SUPERADMIN
-        // =========================================
-        if ($user->hasRole('superadmin')) {
+        // =====================================
+        // 2. CHECK SUPERADMIN ROLE
+        // =====================================
+        $isSuperadmin = DB::table('user_organization_roles')
+            ->join('roles','user_organization_roles.role_id','=','roles.id')
+            ->where('user_organization_roles.user_id',$user->id)
+            ->where('roles.name','superadmin')
+            ->exists();
+
+        if ($isSuperadmin) {
 
             $organizations = Organization::where('created_by', $user->id)->get();
 
@@ -53,15 +59,15 @@ class OrganizationController extends Controller
             ], 200);
         }
 
-        // =========================================
-        // 3️⃣ NORMAL EMPLOYEE USER
-        // =========================================
-        $employee = $user->employee; // relation
+        // =====================================
+        // 3. NORMAL EMPLOYEE USER
+        // =====================================
+        $employee = $user->employee;
 
         if (!$employee || !$employee->organization_id) {
             return response()->json([
                 'success' => false,
-                'message' => 'User has not been assigned to any organization.'
+                'message' => 'User has not been assigned any role or organization.'
             ], 404);
         }
 
