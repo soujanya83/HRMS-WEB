@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Exception;
 use Illuminate\Support\Facades\Hash;
+use App\Models\User;
 
 
 class OrganizationController extends Controller
@@ -114,35 +115,64 @@ class OrganizationController extends Controller
      * Store a newly created resource in storage.
      */
     public function store(StoreOrganizationRequest $request)
-    {
-        try {
-            $user = Auth::user();
+{
+    DB::beginTransaction();
 
-            $data = array_merge(
-                $request->validated(),
-                [
-                    'user_id' => $user->id,
-                    'password' => Hash::make('test@123') // hashed password
-                ]
-            );
+    try {
+        $authUser = Auth::user();
+        $validated = $request->validated();
 
-            $organization = Organization::create($data);
+        // ===============================
+        // CHECK EMAIL EXIST OR CREATE USER
+        // ===============================
+        $email = $validated['email'];
 
-            return response()->json([
-                'success' => true,
-                'data' => $organization,
-                'message' => 'Organization created successfully.'
-            ], 201);
+        $user = User::where('email', $email)->first();
 
-        } catch (Exception $e) {
+        if (!$user) {
 
-            return response()->json([
-                'success' => false,
-                'message' => 'An error occurred while creating the organization: ' . $e->getMessage()
-            ], 500);
+            // name from email before @
+            $name = explode('@', $email)[0];
 
+            $user = User::create([
+                'name' => ucfirst($name),
+                'email' => $email,
+                'password' => Hash::make('test@123'),
+                'is_organization' => 1
+            ]);
         }
+
+        // ===============================
+        // CREATE ORGANIZATION
+        // ===============================
+        $orgData = array_merge($validated, [
+            'user_id'    => $user->id,        // created/existing user id
+            'created_by' => $authUser->id     // auth user id
+        ]);
+
+        $organization = Organization::create($orgData);
+
+        DB::commit();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Organization created successfully',
+            'data' => [
+                'organization' => $organization,
+                'user' => $user
+            ]
+        ], 201);
+
+    } catch (Exception $e) {
+
+        DB::rollBack();
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed: ' . $e->getMessage()
+        ], 500);
     }
+}
 
     /**
      * Display the specified resource.

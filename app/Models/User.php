@@ -7,7 +7,6 @@ use Spatie\Permission\Traits\HasRoles;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Support\Facades\DB;
-use App\Models\Employee\Attendance;
 use App\Models\Organization;
 
 
@@ -20,6 +19,8 @@ class User extends Authenticatable
         'email',
         'password',
         'profile_pin',
+        'device_id',
+        'is_organization',
     ];
 
     protected $hidden = [

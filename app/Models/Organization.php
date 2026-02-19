@@ -21,6 +21,7 @@ class Organization extends Model
         'name',
         'registration_number',
         'password',
+        'created_by',
         'address',
         'contact_email',
         'contact_phone',
@@ -53,6 +54,16 @@ class Organization extends Model
             'organization_id',
             'user_id'
         )->withPivot('role_id', 'created_at', 'updated_at');
+    }
+
+    public function rules()
+    {
+        return [
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|max:255',
+            'phone' => 'nullable|string|max:20',
+            'address' => 'nullable|string|max:500',
+        ];
     }
 
     /**
