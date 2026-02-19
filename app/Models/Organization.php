@@ -19,6 +19,7 @@ class Organization extends Model
      */
     protected $fillable = [
         'name',
+        'user_id',
         'registration_number',
         'password',
         'created_by',
@@ -56,15 +57,17 @@ class Organization extends Model
         )->withPivot('role_id', 'created_at', 'updated_at');
     }
 
-    public function rules()
-    {
-        return [
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|max:255',
-            'phone' => 'nullable|string|max:20',
-            'address' => 'nullable|string|max:500',
-        ];
-    }
+ public function rules()
+{
+    return [
+        'name' => 'required|string|max:255',
+        'contact_email' => 'required|email|max:255',
+        'contact_phone' => 'nullable|string|max:20',
+        'address' => 'nullable|string',
+        'industry_type' => 'nullable|string|max:100',
+        'timezone' => 'required|string|max:50'
+    ];
+}
 
     /**
      * Scope to limit organizations visible to a given user.

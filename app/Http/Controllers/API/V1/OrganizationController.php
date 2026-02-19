@@ -114,7 +114,7 @@ class OrganizationController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(StoreOrganizationRequest $request)
+public function store(StoreOrganizationRequest $request)
 {
     DB::beginTransaction();
 
@@ -123,10 +123,13 @@ class OrganizationController extends Controller
         $validated = $request->validated();
 
         // ===============================
-        // CHECK EMAIL EXIST OR CREATE USER
+        // GET EMAIL FROM contact_email
         // ===============================
-        $email = $validated['email'];
+        $email = $validated['contact_email'];
 
+        // ===============================
+        // CHECK USER EXIST OR CREATE
+        // ===============================
         $user = User::where('email', $email)->first();
 
         if (!$user) {
