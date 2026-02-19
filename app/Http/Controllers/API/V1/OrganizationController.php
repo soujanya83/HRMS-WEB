@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Exception;
 use Illuminate\Support\Facades\Hash;
 use App\Models\User;
+use App\Models\Employee\Employee;
 
 
 class OrganizationController extends Controller
@@ -19,23 +20,67 @@ class OrganizationController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
-    {
-        try {
-            $user = Auth::user();
+  public function index()
+{
+    try {
+        $user = Auth::user();
+
+        // =========================================
+        // 1️⃣ IF USER IS ORGANIZATION
+        // =========================================
+        if ($user->is_organization == 1) {
+
             $organizations = Organization::where('user_id', $user->id)->get();
+
             return response()->json([
                 'success' => true,
                 'data' => $organizations,
-                'message' => 'Organizations retrieved successfully.'
+                'message' => 'Organization data retrieved.'
             ], 200);
-        } catch (Exception $e) {
+        }
+
+        // =========================================
+        // 2️⃣ IF SUPERADMIN
+        // =========================================
+        if ($user->hasRole('superadmin')) {
+
+            $organizations = Organization::where('created_by', $user->id)->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $organizations,
+                'message' => 'Superadmin organizations retrieved.'
+            ], 200);
+        }
+
+        // =========================================
+        // 3️⃣ NORMAL EMPLOYEE USER
+        // =========================================
+        $employee = $user->employee; // relation
+
+        if (!$employee || !$employee->organization_id) {
             return response()->json([
                 'success' => false,
-                'message' => 'An error occurred: ' . $e->getMessage()
-            ], 500);
+                'message' => 'User has not been assigned to any organization.'
+            ], 404);
         }
+
+        $organizations = Organization::where('id', $employee->organization_id)->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $organizations,
+            'message' => 'Employee organization retrieved.'
+        ], 200);
+
+    } catch (Exception $e) {
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Error: ' . $e->getMessage()
+        ], 500);
     }
+}
 
 
     // public function index(Request $request)
