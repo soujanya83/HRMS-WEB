@@ -141,6 +141,7 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('organizations', OrganizationController::class);
         // protected routes here
         // });
+        Route::get('/fund-suggestions', [OrganizationController::class, 'search']);
 
         // employeement type
         Route::apiResource('employment-types', EmploymentTypeController::class);

@@ -13,6 +13,7 @@ use Exception;
 use Illuminate\Support\Facades\Hash;
 use App\Models\User;
 use App\Models\Employee\Employee;
+use App\Models\SuperFund;
 
 
 class OrganizationController extends Controller
@@ -89,78 +90,7 @@ public function index()
 }
 
 
-    // public function index(Request $request)
-    // {
-    //     try {
-    //         /** @var \App\Models\User $user */
-    //         $user = Auth::user();
-
-    //         // If unauthenticated, return 401
-    //         if (!$user) {
-    //             return response()->json([
-    //                 'success' => false,
-    //                 'message' => 'Unauthenticated.'
-    //             ], 401);
-    //         }
-
-    //         // Base query
-    //         $query = Organization::query();
-
-    //         // If user is NOT superadmin, scope to their orgs (uses Organization::scopeForUser)
-    //         $query = $query->forUser($user);
-
-    //         // search
-    //         $search = $request->query('q');
-    //         if (!empty($search)) {
-    //             $query->where('name', 'like', '%' . $search . '%')
-    //                   ->orWhere('contact_email', 'like', '%' . $search . '%')
-    //                   ->orWhere('contact_phone', 'like', '%' . $search . '%');
-    //         }
-
-    //         // allow eager loading small relations if requested (safe defaults)
-    //         if ($request->query('with_departments') == '1') {
-    //             $query->with('departments');
-    //         }
-
-    //         // superadmin may request all records without pagination using ?all=true
-    //         $isSuperadmin = $user->hasRole('superadmin');
-
-    //         if ($isSuperadmin && $request->boolean('all') === true) {
-    //             $organizations = $query->get();
-    //             return response()->json([
-    //                 'success' => true,
-    //                 'data' => $organizations,
-    //                 'message' => 'Organizations retrieved successfully.'
-    //             ], 200);
-    //         }
-
-    //         // pagination (default 15)
-    //         $perPage = (int) $request->query('per_page', 15);
-    //         if ($perPage === 0) {
-    //             $organizations = $query->get();
-    //             return response()->json([
-    //                 'success' => true,
-    //                 'data' => $organizations,
-    //                 'message' => 'Organizations retrieved successfully.'
-    //             ], 200);
-    //         }
-
-    //         $organizations = $query->paginate($perPage)->appends($request->except('page'));
-
-    //         return response()->json([
-    //             'success' => true,
-    //             'data' => $organizations,
-    //             'message' => 'Organizations retrieved successfully.'
-    //         ], 200);
-
-    //     } catch (Exception $e) {
-    //         return response()->json([
-    //             'success' => false,
-    //             'message' => 'An error occurred: ' . $e->getMessage()
-    //         ], 500);
-    //     }
-    // }
-
+   
 
     /**
      * Store a newly created resource in storage.
@@ -277,5 +207,20 @@ public function store(StoreOrganizationRequest $request)
                 'message' => 'An error occurred while deleting the organization: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+     public function search(Request $request)
+    {
+        $query = $request->query('q');
+
+        if (!$query) {
+            return response()->json([]);
+        }
+
+        $funds = SuperFund::where('fund_name', 'LIKE', "%{$query}%")
+            ->limit(5)
+            ->pluck('fund_name');
+
+        return response()->json($funds);
     }
 }
