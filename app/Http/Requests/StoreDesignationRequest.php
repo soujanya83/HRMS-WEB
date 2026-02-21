@@ -25,7 +25,7 @@ class StoreDesignationRequest extends FormRequest
     {
         return [
             'title' => 'required|string|max:255',
-            'level' => 'required|string|max:255',
+            'level' => 'nullable|string|max:255',
         ];
     }
 
