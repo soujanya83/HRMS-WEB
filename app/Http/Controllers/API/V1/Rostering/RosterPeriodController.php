@@ -39,6 +39,7 @@ class RosterPeriodController extends Controller
         return response()->json(['success' => true, 'data' => $period], 201);
     }
 
+    
     // Publish period
     public function publish($id)
     {
