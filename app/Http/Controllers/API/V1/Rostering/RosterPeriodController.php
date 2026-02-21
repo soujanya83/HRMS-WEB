@@ -10,7 +10,7 @@ use Carbon\Carbon;
 class RosterPeriodController extends Controller
 {
     // Create weekly or monthly period
-    public function store(Request $request)
+   public function store(Request $request)
     {
         $validated = $request->validate([
             'organization_id' => 'required|exists:organizations,id',
@@ -19,11 +19,26 @@ class RosterPeriodController extends Controller
             'created_by' => 'required|exists:users,id',
         ]);
 
-        $start = Carbon::parse($validated['start_date']);
+        $start = Carbon::parse($validated['start_date'])->startOfDay();
+
+        // ✅ Check if already exists
+        $exists = RosterPeriod::where('organization_id', $validated['organization_id'])
+            ->where('type', $validated['type'])
+            ->whereDate('start_date', $start)
+            ->exists();
+
+        if ($exists) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Roster period already exists for this start date and type.'
+            ], 422);
+        }
+
+        // Calculate end date
         if ($validated['type'] === 'weekly') {
             $end = $start->copy()->addDays(6)->endOfDay();
         } elseif ($validated['type'] === 'fortnightly') {
-            $end = $start->copy()->addDays(13)->endOfDay(); // 2 weeks (14 days)
+            $end = $start->copy()->addDays(13)->endOfDay();
         } else {
             $end = $start->copy()->addDays($start->daysInMonth - 1)->endOfDay();
         }
@@ -36,10 +51,13 @@ class RosterPeriodController extends Controller
             'created_by' => $validated['created_by'],
         ]);
 
-        return response()->json(['success' => true, 'data' => $period], 201);
+        return response()->json([
+            'success' => true,
+            'data' => $period
+        ], 201);
     }
 
-    
+
     // Publish period
     public function publish($id)
     {
