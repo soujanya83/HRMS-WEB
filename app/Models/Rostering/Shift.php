@@ -16,6 +16,8 @@ class Shift extends Model
         'name',
         'start_time',
         'end_time',
+        'break_end',
+        'break_start',
         'color_code',
         'notes',
     ];

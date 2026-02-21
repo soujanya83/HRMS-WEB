@@ -25,6 +25,8 @@ class ShiftController extends Controller
             'name' => 'required|string|max:100',
             'start_time' => 'required|date_format:H:i',
             'end_time' => 'required|date_format:H:i|after:start_time',
+            'break_start' => 'nullable|date_format:H:i',
+            'break_end' => 'nullable|date_format:H:i|after:break_start',
             'color_code' => 'nullable|string|max:7',
             'notes' => 'nullable|string|max:500',
         ]);
@@ -47,6 +49,8 @@ class ShiftController extends Controller
             'name' => 'sometimes|string|max:100',
             'start_time' => 'sometimes|date_format:H:i',
             'end_time' => 'sometimes|date_format:H:i|after:start_time',
+            'break_start' => 'nullable|date_format:H:i',
+            'break_end' => 'nullable|date_format:H:i|after:break_start',
             'color_code' => 'sometimes|string|max:7',
             'notes' => 'nullable|string|max:500',
         ]);
