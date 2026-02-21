@@ -149,7 +149,7 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('organizations.departments', DepartmentController::class)->shallow();
 
         // Nested Designation Routes
-        Route::apiResource('departments.designations', DesignationController::class)->shallow();
+        Route::apiResource('organizations.designations', DesignationController::class)->shallow();
 
         Route::apiResource('attendances', AttendanceController::class);
 
