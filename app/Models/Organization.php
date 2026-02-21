@@ -39,6 +39,12 @@ class Organization extends Model
         return $this->hasMany(Department::class);
     }
 
+    public function designations()
+    {
+        return $this->hasMany(Designation::class, 'organization_id', 'id');
+    }
+
+
     public function attendanceRule(): HasMany
     {
         return $this->hasMany(OrganizationAttendanceRule::class);
