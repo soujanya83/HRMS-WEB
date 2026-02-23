@@ -104,7 +104,7 @@ class EmployeeController extends Controller
             'personal_email' => ['required', 'email', 'max:190'],
 
             'date_of_birth' => ['required','date'],
-            'gender' => ['required', Rule::in(['Male','Female','Other'])],
+            'gender' => ['required', Rule::in(['Male','Female','Other','Prefer not to say'])],
             'phone_number' => ['required','string','max:20'],
             'address' => ['required','string','max:1000'],
             'joining_date' => ['required','date'],
@@ -120,6 +120,7 @@ class EmployeeController extends Controller
 
             'visa_type' => ['nullable','string','max:50'],
             'visa_expiry_date' => ['nullable','date'],
+            'hourly_wage' => ['nullable','numeric','min:0'],
 
             'emergency_contact_name' => ['nullable','string','max:255'],
             'emergency_contact_phone' => ['nullable','string','max:30'],
@@ -264,7 +265,7 @@ class EmployeeController extends Controller
                 'last_name' => 'sometimes|string|max:190',
                 'personal_email' => 'sometimes|email|max:190|unique:employees,personal_email,' . $id,
                 'date_of_birth' => 'sometimes|date',
-                'gender' => 'sometimes|in:Male,Female,Other',
+                'gender' => 'sometimes|in:Male,Female,Other,Prefer not to say',
                 'phone_number' => 'sometimes|string|max:20',
                 'address' => 'sometimes|string|max:1000',
                 'joining_date' => 'sometimes|date',
@@ -275,7 +276,7 @@ class EmployeeController extends Controller
                 'superannuation_member_number' => 'nullable|string|max:100',
                 'bank_bsb' => 'nullable|string|max:10',
                 'bank_account_number' => 'nullable|string|max:30',
-                'visa_type' => 'nullable|string|max:50',
+                'hourly_wage' => 'nullable|numeric|min:0',
                 'visa_expiry_date' => 'nullable|date',
                 'emergency_contact_name' => 'nullable|string|max:255',
                 'emergency_contact_phone' => 'nullable|string|max:30',

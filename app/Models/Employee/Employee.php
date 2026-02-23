@@ -48,6 +48,7 @@ class Employee extends Model
         'superannuation_member_number',
         'bank_bsb',
         'bank_account_number',
+        'hourly_wage',
         'visa_type',
         'visa_expiry_date',
         'emergency_contact_name',
