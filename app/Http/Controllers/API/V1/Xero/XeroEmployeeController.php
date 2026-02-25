@@ -1523,23 +1523,31 @@ public function employeeshow($id)
 // ----------------------------------------------------------------
     // 1. SYNC LEAVE TYPES (Configuration Page ke liye)
     // ----------------------------------------------------------------
-    public function syncLeaveTypes(Request $request)
+   public function syncLeaveTypes(Request $request)
     {
         $request->validate(['organization_id' => 'required']);
         $orgId = $request->organization_id;
 
         $connection = $this->getXeroConnection($orgId);
 
+        // ✅ 1. Changed URL to PayItems
         $response = Http::withHeaders($this->getHeaders($connection))
-            ->get('https://api.xero.com/payroll.xro/1.0/LeaveTypes');
+            ->get('https://api.xero.com/payroll.xro/1.0/PayItems');
 
         if (!$response->successful()) {
-            return response()->json(['status' => false, 'message' => 'Failed to fetch types'], 500);
+            // ✅ 2. Better Error Handling to see exactly what Xero is complaining about
+            return response()->json([
+                'status' => false, 
+                'message' => 'Failed to fetch Pay Items from Xero',
+                'xero_status' => $response->status(),
+                'xero_error' => $response->json() // This will print the actual error
+            ], $response->status());
         }
 
-        $types = $response->json()['LeaveTypes'] ?? [];
+        // ✅ 3. Corrected JSON Parsing (LeaveTypes is inside PayItems)
+        $leaveTypes = $response->json()['PayItems']['LeaveTypes'] ?? [];
 
-        foreach ($types as $type) {
+        foreach ($leaveTypes as $type) {
             XeroLeaveType::updateOrCreate(
                 ['xero_leave_type_id' => $type['LeaveTypeID']],
                 [
