@@ -703,25 +703,79 @@ public function parseAddress($fullAddress)
 
 private function processSingleEmployee($connection, array $xeroEmployee)
 {
-    // Check if already synced
-    if (EmployeeXeroConnection::where('xero_employee_id', $xeroEmployee['EmployeeID'])->exists()) {
-        throw new \Exception('Employee already synced');
-    }
-
-    // Validate required data
     $this->validateXeroEmployeeData($xeroEmployee);
 
     DB::transaction(function () use ($connection, $xeroEmployee) {
-        // Create User
-        $user = $this->createUser($xeroEmployee);
-        
-        // Create Employee
-        $employee = $this->createEmployee($connection->organization_id, $user->id, $xeroEmployee);
-        
-        // Create Mapping
-        $this->createEmployeeXeroConnection($connection, $employee->id, $xeroEmployee);
+
+        // Try to find existing user by email
+        $email = $xeroEmployee['Email'] ?? null;
+
+        $user = null;
+        $employee = null;
+        $mapping = null;
+
+        if ($email) {
+            $user = User::where('email', $email)->first();
+        }
+
+        if ($user) {
+            // Employee already exists -> UPDATE FLOW
+            $employee = Employee::where('user_id', $user->id)->first();
+
+            if ($employee) {
+                $this->updateEmployee($employee, $xeroEmployee);
+            }
+
+            // Update or create mapping
+            $mapping = EmployeeXeroConnection::updateOrCreate(
+                [
+                    'employee_id' => $employee->id,
+                    'organization_id' => $connection->organization_id,
+                ],
+                [
+                    'xero_connection_id' => $connection->id,
+                    'xero_employee_id' => $xeroEmployee['EmployeeID'],
+                    'xerocalenderId' => $xeroEmployee['PayrollCalendarID'] ?? null,
+                    'OrdinaryEarningsRateID' => $xeroEmployee['OrdinaryEarningsRateID'] ?? null,
+                    'xero_status' => $xeroEmployee['Status'] ?? null,
+                    'xero_data' => json_encode($xeroEmployee),
+                    'is_synced' => true,
+                    'sync_status' => 'updated',
+                    'last_synced_at' => now(),
+                ]
+            );
+
+        } else {
+            // CREATE FLOW
+            $user = $this->createUser($xeroEmployee);
+            $employee = $this->createEmployee($connection->organization_id, $user->id, $xeroEmployee);
+            $this->createEmployeeXeroConnection($connection, $employee->id, $xeroEmployee);
+        }
+
     });
 }
+
+private function updateEmployee(Employee $employee, array $xeroEmployee)
+{
+    $employee->update([
+        'first_name' => $xeroEmployee['FirstName'] ?? $employee->first_name,
+        'last_name' => $xeroEmployee['LastName'] ?? $employee->last_name,
+        'personal_email' => $xeroEmployee['Email'] ?? $employee->personal_email,
+        'date_of_birth' => $this->convertXeroDate($xeroEmployee['DateOfBirth'] ?? null),
+        'joining_date' => $this->convertXeroDate($xeroEmployee['StartDate'] ?? null),
+        'gender' => $this->mapGender($xeroEmployee['Gender'] ?? ''),
+        'phone_number' => $this->getPhoneNumber($xeroEmployee),
+        'status' => strtolower($xeroEmployee['Status'] ?? 'active') === 'terminated'
+            ? 'inactive'
+            : 'active',
+    ]);
+
+    Log::info('Employee updated from Xero sync', [
+        'employee_id' => $employee->id
+    ]);
+}
+
+
 
 private function validateXeroEmployeeData(array $xeroEmployee)
 {
