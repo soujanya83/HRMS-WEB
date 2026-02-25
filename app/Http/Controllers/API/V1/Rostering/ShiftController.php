@@ -5,6 +5,8 @@ namespace App\Http\Controllers\API\V1\Rostering;
 use App\Http\Controllers\Controller;
 use App\Models\Rostering\Shift;
 use Illuminate\Http\Request;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
 
 class ShiftController extends Controller
 {
@@ -27,9 +29,22 @@ class ShiftController extends Controller
             'end_time' => 'required|date_format:H:i|after:start_time',
             'break_start' => 'nullable|date_format:H:i',
             'break_end' => 'nullable|date_format:H:i|after:break_start',
+            'break_grace_minutes' => 'nullable|integer|min:0',
             'color_code' => 'nullable|string|max:7',
             'notes' => 'nullable|string|max:500',
         ]);
+
+          // ✅ Calculate total_break_minutes automatically
+    if (!empty($validated['break_start']) && !empty($validated['break_end'])) {
+
+        $breakStart = Carbon::createFromFormat('H:i', $validated['break_start']);
+        $breakEnd   = Carbon::createFromFormat('H:i', $validated['break_end']);
+
+        $validated['total_break_minutes'] = $breakStart->diffInMinutes($breakEnd);
+    } else {
+        $validated['total_break_minutes'] = 0;
+    }
+
         $shift = Shift::create($validated);
         return response()->json(['success' => true, 'data' => $shift], 201);
     }
@@ -54,6 +69,18 @@ class ShiftController extends Controller
             'color_code' => 'sometimes|string|max:7',
             'notes' => 'nullable|string|max:500',
         ]);
+
+          // ✅ Calculate total_break_minutes automatically
+    if (!empty($validated['break_start']) && !empty($validated['break_end'])) {
+
+        $breakStart = Carbon::createFromFormat('H:i', $validated['break_start']);
+        $breakEnd   = Carbon::createFromFormat('H:i', $validated['break_end']);
+
+        $validated['total_break_minutes'] = $breakStart->diffInMinutes($breakEnd);
+    } else {
+        $validated['total_break_minutes'] = 0;
+    }
+
         $shift->update($validated);
         return response()->json(['success' => true, 'data' => $shift], 200);
     }
