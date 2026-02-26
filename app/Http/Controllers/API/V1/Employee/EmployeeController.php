@@ -29,6 +29,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Auth\Passwords\PasswordBroker;
 use Throwable;
 use Exception;
+use App\Models\EmployeeXeroConnection;
 
 class EmployeeController extends Controller
 {
@@ -333,20 +334,56 @@ class EmployeeController extends Controller
         }
     }
 
-    public function forceDelete($id): JsonResponse
-    {
-        try {
-            $employee = Employee::onlyTrashed()->findOrFail($id);
-            $employee->forceDelete();
+  public function forceDelete($id): JsonResponse
+{
+    DB::beginTransaction();
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Employee permanently deleted'
-            ], 200);
-        } catch (Exception $e) {
-            return $this->serverError('Failed to permanently delete employee', $e);
+    try {
+
+        // Get soft deleted employee
+        $employee = Employee::onlyTrashed()->findOrFail($id);
+
+        /* ==============================
+         | 1. Delete EmployeeXeroConnection
+         ============================== */
+        EmployeeXeroConnection::where('employee_id', $employee->id)
+            ->delete();
+
+        /* ==============================
+         | 2. Delete Related User (if exists)
+         ============================== */
+        if (!empty($employee->user_id)) {
+
+            $user = User::find($employee->user_id);
+
+            if ($user) {
+                $user->delete(); // use forceDelete() if user also soft deletes
+            }
         }
+
+        /* ==============================
+         | 3. Force Delete Employee
+         ============================== */
+        $employee->forceDelete();
+
+        DB::commit();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Employee and related data permanently deleted.'
+        ], 200);
+
+    } catch (\Exception $e) {
+
+        DB::rollBack();
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to permanently delete employee.',
+            'error' => $e->getMessage()
+        ], 500);
     }
+}
 
     public function getByStatus($status): JsonResponse
     {
