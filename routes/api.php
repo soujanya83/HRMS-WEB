@@ -399,6 +399,11 @@ Route::prefix('v1')->group(function () {
 
             Route::post('/manual', [AttendanceController::class, 'manualAttendance']);
 
+            Route::post('/break-start', [AttendanceController::class, 'breakStart']);
+            Route::post('/break-end', [AttendanceController::class, 'breakEnd']);
+            Route::post('/manual-break', [AttendanceController::class, 'manualBreak']);
+
+
 
             // Extra work on holiday
             Route::post('/work-on-holiday', [AttendanceController::class, 'RequestWorkOnHoliday']);
