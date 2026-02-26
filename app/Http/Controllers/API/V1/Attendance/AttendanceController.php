@@ -2003,4 +2003,106 @@ class AttendanceController extends Controller
     }
 }
 
+public function manualAttendance(Request $request): JsonResponse
+{
+    try {
+
+        /* ============================
+         | 1. BASIC VALIDATION
+         ============================ */
+        $validated = $request->validate([
+            'employee_id' => ['required', 'exists:employees,id'],
+            'date'        => ['required', 'date'],
+            'check_in'    => ['nullable', 'date_format:H:i'],
+            'check_out'   => ['nullable', 'date_format:H:i'],
+            'notes'       => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $employee = Employee::with('organization:id,timezone')
+            ->findOrFail($validated['employee_id']);
+
+        $timezone = $employee->organization->timezone ?? 'Australia/Sydney';
+
+        $dateInTz = Carbon::parse($validated['date'])
+            ->setTimezone($timezone)
+            ->format('Y-m-d');
+
+        $attendance = Attendance::where('employee_id', $employee->id)
+            ->where('date', $dateInTz)
+            ->first();
+
+        /* ============================
+         | 2. FORMAT TIMES
+         ============================ */
+        $checkInTime = null;
+        $checkOutTime = null;
+        $totalWorkingHours = 0;
+
+        if (!empty($validated['check_in'])) {
+            $checkInTime = Carbon::createFromFormat(
+                'Y-m-d H:i',
+                "{$dateInTz} {$validated['check_in']}"
+            )->format('H:i');
+        }
+
+        if (!empty($validated['check_out'])) {
+            $checkOutTime = Carbon::createFromFormat(
+                'Y-m-d H:i',
+                "{$dateInTz} {$validated['check_out']}"
+            )->format('H:i');
+        }
+
+        /* ============================
+         | 3. CALCULATE TOTAL HOURS
+         ============================ */
+        if ($checkInTime && $checkOutTime) {
+            $totalWorkingHours =
+                Carbon::parse($checkInTime)
+                    ->diffInMinutes(Carbon::parse($checkOutTime)) / 60;
+        }
+
+        /* ============================
+         | 4. CREATE OR UPDATE
+         ============================ */
+        if (!$attendance) {
+            $attendance = Attendance::create([
+                'employee_id'      => $employee->id,
+                'organization_id'  => $employee->organization_id,
+                'date'             => $dateInTz,
+                'check_in'         => $checkInTime,
+                'check_out'        => $checkOutTime,
+                'status'           => 'present',
+                'notes'            => $validated['notes'] ?? null,
+                'is_late'          => 0, // manual override
+                'total_work_hours' => $totalWorkingHours,
+            ]);
+        } else {
+            $attendance->update([
+                'check_in'         => $checkInTime ?? $attendance->check_in,
+                'check_out'        => $checkOutTime ?? $attendance->check_out,
+                'notes'            => $validated['notes'] ?? $attendance->notes,
+                'total_work_hours' => $totalWorkingHours,
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Manual attendance updated successfully.',
+            'data'    => $attendance,
+        ], 200);
+
+    } catch (\Exception $e) {
+
+        Log::error('Manual Attendance Error', [
+            'error' => $e->getMessage(),
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Something went wrong.',
+        ], 500);
+    }
+}
+
+
 }

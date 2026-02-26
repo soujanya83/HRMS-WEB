@@ -397,6 +397,9 @@ Route::prefix('v1')->group(function () {
             Route::put('/approve-or-reject-employee-attendance-change-request/{Id}', [AttendanceController::class, 'approveAttendanceChange']);
             Route::get('/manual-change-requests', [AttendanceController::class, 'getAttendancechangeRequests']);
 
+            Route::post('/manual', [AttendanceController::class, 'manualAttendance']);
+
+
             // Extra work on holiday
             Route::post('/work-on-holiday', [AttendanceController::class, 'RequestWorkOnHoliday']);
             Route::get('/work-on-holiday', [AttendanceController::class, 'ShowHolidayRequests']);
