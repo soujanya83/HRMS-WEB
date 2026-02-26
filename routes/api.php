@@ -58,6 +58,8 @@ use App\Http\Controllers\API\V1\Xero\XeroConnectionController;
 use App\Http\Controllers\API\V1\Xero\XeroEmployeeController;
 use App\Http\Controllers\API\V1\ProfilePinController;
 use App\Http\Controllers\API\V1\Employee\FaceController;
+use App\Http\Controllers\API\V1\XeroLeaveTypeController;
+use App\Http\Controllers\API\V1\XeroLeaveApplicationController;
 
 use App\Http\Controllers\API\V1\{
     RoleController,
@@ -206,6 +208,12 @@ Route::prefix('v1')->group(function () {
 
             // 3. Apply/Push Leave to Xero (Manager Approval Action)
             Route::post('/xero/leaves/apply', [XeroEmployeeController::class, 'applyLeave']);
+
+
+             Route::post('/xero-leave-types', [XeroLeaveTypeController::class, 'index']);
+             Route::post('/xero-leave-applications', [XeroLeaveApplicationController::class, 'index']);
+
+
 
 
 
