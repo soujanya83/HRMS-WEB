@@ -439,7 +439,7 @@ class EmployeeController extends Controller
 
     public function getByOrganization($id): JsonResponse
     {
-        $employees = Employee::where('organization_id', $id)->with(['organization', 'department', 'designation'])->get();
+        $employees = Employee::where('organization_id', $id)->with(['organization', 'department', 'designation','xeroEmployeeConnection'])->get();
         return response()->json(['success' => true, 'data' => $employees], 200);
     }
 

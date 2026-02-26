@@ -64,6 +64,7 @@ class Employee extends Model
         'is_face_registered' => 'boolean',
     ];
 
+
     // Relationships
     public function user()
     {
@@ -145,4 +146,14 @@ class Employee extends Model
     {
         return $this->hasOne(EmployeeXeroConnection::class, 'employee_id', 'id');
     }
+    
+    public function getXeroSyncedStatusAttribute()
+{
+    if ($this->xeroEmployeeConnection && $this->xeroEmployeeConnection->is_synced == 1) {
+        return 'Synced';
+    }
+
+    return 'Not-Synced';
+}
+
 }
