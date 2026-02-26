@@ -34,10 +34,10 @@ class Department extends Model
     /**
      * Get the designations for the department.
      */
-    public function designations(): HasMany
-    {
-        return $this->hasMany(Designation::class);
-    }
+    // public function designations(): HasMany
+    // {
+    //     return $this->hasMany(Designation::class);
+    // }
 
     public function employees(): HasMany
     {
