@@ -371,7 +371,7 @@ Route::prefix('v1')->group(function () {
             Route::put('/{id}', [EmployeeController::class, 'update']);
             Route::patch('/{id}', [EmployeeController::class, 'update']);
             Route::delete('/{id}', [EmployeeController::class, 'destroy']);
-            Route::get('/trashed', [EmployeeController::class, 'getTrashed']);
+            Route::post('/trashed', [EmployeeController::class, 'getTrashed']);
             Route::patch('/{id}/restore', [EmployeeController::class, 'restore']);
             Route::delete('/{id}/force', [EmployeeController::class, 'forceDelete']);
             Route::get('/status/{status}', [EmployeeController::class, 'getByStatus']);

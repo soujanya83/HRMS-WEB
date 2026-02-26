@@ -312,11 +312,41 @@ class EmployeeController extends Controller
         }
     }
 
-    public function getTrashed(): JsonResponse
-    {
-        $employees = Employee::onlyTrashed()->with(['user', 'organization'])->get();
-        return response()->json(['success' => true, 'data' => $employees], 200);
+  public function getTrashed(Request $request): JsonResponse
+{
+    try {
+
+        /* ===============================
+         | 1. VALIDATION
+         =============================== */
+        $validated = $request->validate([
+            'organization_id' => ['required', 'exists:organizations,id'],
+        ]);
+
+        /* ===============================
+         | 2. FETCH SOFT DELETED EMPLOYEES
+         =============================== */
+        $employees = Employee::onlyTrashed()
+            ->where('organization_id', $validated['organization_id'])
+            ->with(['user', 'organization'])
+            ->orderByDesc('deleted_at')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $employees
+        ], 200);
+
+    } catch (\Exception $e) {
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Something went wrong.',
+            'error' => $e->getMessage()
+        ], 500);
     }
+}
+
 
     public function restore($id): JsonResponse
     {
