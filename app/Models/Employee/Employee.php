@@ -25,6 +25,9 @@ class Employee extends Model
 {
     use HasFactory, SoftDeletes;
 
+        protected $appends = ['xero_synced_status'];
+
+
     protected $fillable = [
         'organization_id',
         'user_id',
