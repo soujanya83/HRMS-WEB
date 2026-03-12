@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use App\Models\User;
+use Illuminate\Support\Facades\Mail;
+use Carbon\Carbon;
 
 class AuthController extends Controller
 {
@@ -160,4 +162,152 @@ class AuthController extends Controller
             ], 500);
         }
     }
+
+    public function forgotPassword(Request $request)
+{
+    try {
+
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email|exists:users,email'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Validation error',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $user = User::where('email', $request->email)->first();
+
+        $otp = rand(100000, 999999);
+
+        $user->update([
+            'reset_password_otp' => $otp,
+            'reset_password_otp_expires_at' => Carbon::now()->addMinutes(10)
+        ]);
+
+        Mail::send('emails.forgot-password', [
+            'otp' => $otp,
+            'name' => $user->name
+        ], function ($message) use ($user) {
+            $message->to($user->email);
+            $message->subject('Reset Your Password');
+        });
+
+        return response()->json([
+            "status" => true,
+            "message" => "Password reset OTP sent to email"
+        ]);
+
+    } catch (\Exception $e) {
+
+        return response()->json([
+            "status" => false,
+            "message" => "Something went wrong",
+            "error" => $e->getMessage()
+        ], 500);
+    }
+}
+
+public function verifyOtp(Request $request)
+{
+    try {
+
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email',
+            'otp' => 'required'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Validation error',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $user = User::where('email', $request->email)
+                    ->where('reset_password_otp', $request->otp)
+                    ->first();
+
+        if (!$user) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Invalid OTP'
+            ], 400);
+        }
+
+        if (Carbon::now()->gt($user->reset_password_otp_expires_at)) {
+            return response()->json([
+                'status' => false,
+                'message' => 'OTP expired'
+            ], 400);
+        }
+
+        return response()->json([
+            "status" => true,
+            "message" => "OTP verified successfully"
+        ]);
+
+    } catch (\Exception $e) {
+
+        return response()->json([
+            "status" => false,
+            "message" => "Something went wrong",
+            "error" => $e->getMessage()
+        ], 500);
+    }
+}
+
+public function resetPassword(Request $request)
+{
+    try {
+
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email',
+            'otp' => 'required',
+            'password' => 'required|min:6|confirmed'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Validation error',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $user = User::where('email', $request->email)
+                    ->where('reset_password_otp', $request->otp)
+                    ->first();
+
+        if (!$user) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Invalid OTP'
+            ], 400);
+        }
+
+        $user->update([
+            'password' => Hash::make($request->password),
+            'reset_password_otp' => null,
+            'reset_password_otp_expires_at' => null
+        ]);
+
+        return response()->json([
+            "status" => true,
+            "message" => "Password reset successfully"
+        ]);
+
+    } catch (\Exception $e) {
+
+        return response()->json([
+            "status" => false,
+            "message" => "Something went wrong",
+            "error" => $e->getMessage()
+        ], 500);
+    }
+}
 }

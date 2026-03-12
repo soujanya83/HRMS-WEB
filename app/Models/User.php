@@ -21,6 +21,8 @@ class User extends Authenticatable
         'profile_pin',
         'device_id',
         'is_organization',
+        'reset_password_otp_expires_at',
+        'reset_password_otp',
     ];
 
     protected $hidden = [
