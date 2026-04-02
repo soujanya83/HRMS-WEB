@@ -60,6 +60,9 @@ use App\Http\Controllers\API\V1\ProfilePinController;
 use App\Http\Controllers\API\V1\Employee\FaceController;
 use App\Http\Controllers\API\V1\XeroLeaveTypeController;
 use App\Http\Controllers\API\V1\XeroLeaveApplicationController;
+use App\Http\Controllers\API\V1\EmployeeInvitesEmailcontroller;
+use App\Http\Controllers\API\V1\InterviewQuestionController;
+use App\Http\Controllers\API\V1\ApplicantAnswerController;
 
 use App\Http\Controllers\API\V1\{
     RoleController,
@@ -76,7 +79,12 @@ use App\Http\Controllers\API\V1\{
 
 
 
+
 Route::prefix('v1')->group(function () {
+
+    Route::post('/send-invite', [EmployeeInvitesEmailcontroller::class, 'sendInvite']);
+
+
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
@@ -702,6 +710,24 @@ Route::prefix('v1')->group(function () {
         // Module APIs
 Route::get('modules', [ModuleController::class, 'index']);
 Route::get('modules/{id}/pages', [ModuleController::class, 'pages']);
+
+
+
+Route::prefix('questions')->group(function () {
+    Route::post('/', [InterviewQuestionController::class, 'store']);
+    Route::get('/', [InterviewQuestionController::class, 'index']);
+    Route::put('/{id}', [InterviewQuestionController::class, 'update']);
+    Route::delete('/{id}', [InterviewQuestionController::class, 'destroy']);
+});
+
+Route::prefix('answers')->group(function () {
+    Route::post('/', [ApplicantAnswerController::class, 'store']);
+    Route::get('/', [ApplicantAnswerController::class, 'index']);
+    Route::put('/rating/{id}', [ApplicantAnswerController::class, 'updateRating']);
+    Route::delete('/{id}', [ApplicantAnswerController::class, 'destroy']);
+});
+
+
     });
 
 });
