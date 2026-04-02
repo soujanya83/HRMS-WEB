@@ -721,9 +721,16 @@ Route::prefix('questions')->group(function () {
 });
 
 Route::prefix('answers')->group(function () {
+
     Route::post('/', [ApplicantAnswerController::class, 'store']);
     Route::get('/', [ApplicantAnswerController::class, 'index']);
+
+    Route::get('/applicant/{id}', [ApplicantAnswerController::class, 'getByApplicant']); // ✅ filter
+
     Route::put('/rating/{id}', [ApplicantAnswerController::class, 'updateRating']);
+
+    Route::get('/average/{id}', [ApplicantAnswerController::class, 'getAverageRating']); // ✅ avg
+
     Route::delete('/{id}', [ApplicantAnswerController::class, 'destroy']);
 });
 

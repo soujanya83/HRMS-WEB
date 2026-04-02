@@ -10,6 +10,7 @@ class ApplicantAnswer extends Model
         'question_id',
         'applicant_name',
         'applicant_email',
+        'applicant_id',
         'answer',
         'rating'
     ];
@@ -18,4 +19,5 @@ class ApplicantAnswer extends Model
     {
         return $this->belongsTo(InterviewQuestion::class);
     }
+
 }
