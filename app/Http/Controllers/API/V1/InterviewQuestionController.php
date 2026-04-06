@@ -26,7 +26,7 @@ class InterviewQuestionController extends Controller
     // Get All Questions
     public function index()
     {
-        $questions = InterviewQuestion::latest()->get();
+        $questions = InterviewQuestion::all();
 
         return response()->json(['status' => true, 'data' => $questions]);
     }
