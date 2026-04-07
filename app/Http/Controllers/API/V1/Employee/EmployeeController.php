@@ -30,6 +30,7 @@ use Illuminate\Auth\Passwords\PasswordBroker;
 use Throwable;
 use Exception;
 use App\Models\EmployeeXeroConnection;
+use Illuminate\Support\Facades\Crypt;
 
 class EmployeeController extends Controller
 {
@@ -818,6 +819,123 @@ class EmployeeController extends Controller
             );
         }
     }
+
+
+
+
+public function updateEmployeeProfile(Request $request)
+{
+    try {
+        // ✅ Validation
+        $request->validate([
+            'employee_id' => 'required|exists:employees,id',
+
+            'first_name' => 'required|string|max:190',
+            'middle_name' => 'nullable|string|max:190',
+            'last_name' => 'required|string|max:190',
+
+            'email' => 'required|email|max:190',
+            'phone_number' => 'required|string|max:20',
+
+            'date_of_birth' => 'required|date',
+            'gender' => ['required', Rule::in(['Male','Female','Other','Prefer not to say'])],
+
+            'address' => 'required|string|max:1000',
+
+            'emergency_contact_name' => 'required|string|max:255',
+            'emergency_contact_phone' => 'required|string|max:30',
+            'emergency_contact_relationship' => 'required|string|max:100',
+
+            'tax_file_number' => 'required|string|max:100',
+
+            'superannuation_fund_name' => 'nullable|string|max:255',
+            'superannuation_member_number' => 'nullable|string|max:100',
+
+            'bank_bsb' => 'nullable|string|max:10',
+            'bank_account_number' => 'nullable|string|max:30',
+
+            // Optional visa fields
+            'citizenship_status' => 'nullable|in:Citizen,PR,Visa',
+            'is_australian_citizen' => 'nullable|boolean',
+            'is_pr' => 'nullable|boolean',
+            'visa_type' => 'nullable|string|max:50',
+        ]);
+
+        DB::beginTransaction();
+
+        // ✅ Get employee
+        $employee = Employee::findOrFail($request->employee_id);
+
+        // ✅ Update user email (if changed)
+        $user = User::find($employee->user_id);
+
+        // if ($user && $user->email !== $request->email) {
+        //     $request->validate([
+        //         'email' => [
+        //             'required',
+        //             'email',
+        //             Rule::unique('users', 'email')->ignore($user->id),
+        //         ]
+        //     ]);
+
+        //     $user->update([
+        //         'email' => $request->email,
+        //         'name' => trim($request->first_name . ' ' . $request->last_name),
+        //     ]);
+        // }
+
+        // ✅ Encrypt TFN
+        $encryptedTFN = Crypt::encryptString($request->tax_file_number);
+
+        // ✅ Update employee
+        $employee->update([
+            'first_name' => $request->first_name,
+            'middle_name' => $request->middle_name,
+            'last_name' => $request->last_name,
+            'personal_email' => $request->email,
+            'phone_number' => $request->phone_number,
+            'date_of_birth' => $request->date_of_birth,
+            'gender' => $request->gender,
+            'address' => $request->address,
+
+            'emergency_contact_name' => $request->emergency_contact_name,
+            'emergency_contact_phone' => $request->emergency_contact_phone,
+            'emergency_contact_relationship' => $request->emergency_contact_relationship,
+
+            'tax_file_number' => $encryptedTFN,
+
+            'superannuation_fund_name' => $request->superannuation_fund_name,
+            'superannuation_member_number' => $request->superannuation_member_number,
+
+            'bank_bsb' => $request->bank_bsb,
+            'bank_account_number' => $request->bank_account_number,
+
+            // Visa / citizenship
+            'citizenship_status' => $request->citizenship_status,
+            'is_australian_citizen' => $request->is_australian_citizen,
+            'is_pr' => $request->is_pr,
+            'visa_type' => $request->visa_type,
+        ]);
+
+        DB::commit();
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Employee profile updated successfully',
+            'data' => $employee
+        ]);
+
+    } catch (\Exception $e) {
+
+        DB::rollBack();
+
+        return response()->json([
+            'status' => false,
+            'message' => $e->getMessage()
+        ]);
+    }
+}
+
 
 
 

@@ -83,6 +83,7 @@ use App\Http\Controllers\API\V1\{
 Route::prefix('v1')->group(function () {
 
     Route::post('/send-invite', [EmployeeInvitesEmailcontroller::class, 'sendInvite']);
+    Route::post('/employee/update-profile', [EmployeeController::class, 'updateEmployeeProfile']);
 
 
     Route::post('/register', [AuthController::class, 'register']);

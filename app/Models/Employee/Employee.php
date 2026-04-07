@@ -61,6 +61,9 @@ class Employee extends Model
         'face_embedding',
         'is_face_registered',
         'profile_image_url',
+        'citizenship_status',
+        'is_australian_citizen',
+        'is_pr',
     ];
 
     protected $casts = [
