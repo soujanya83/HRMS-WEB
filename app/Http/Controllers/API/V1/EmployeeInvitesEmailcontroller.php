@@ -50,6 +50,7 @@ class EmployeeInvitesEmailcontroller extends Controller
                     'first_name' => $request->name,
                     'middle_name' => $request->middle_name,
                     'last_name' => $request->last_name,
+                    'personal_email' => $email,
                     // 'employee_code' => 'EMP' . time(), // simple unique code
                     // 'joining_date' => now(),
                     // 'employment_type' => 'Full-time',
@@ -82,6 +83,7 @@ class EmployeeInvitesEmailcontroller extends Controller
                 'first_name' => $request->name,
                 'middle_name' => $request->middle_name,
                 'last_name' => $request->last_name,
+                'personal_email' => $email,
                 // 'employee_code' => 'EMP' . time(),
                 // 'joining_date' => now(),
                 // 'employment_type' => 'Full-time',
