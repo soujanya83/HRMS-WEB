@@ -37,6 +37,7 @@ class Employee extends Model
         'reporting_manager_id',
         'employee_code',
         'first_name',
+        'middle_name',
         'last_name',
         'personal_email',
         'date_of_birth',
