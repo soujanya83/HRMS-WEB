@@ -65,7 +65,7 @@ class AuthController extends Controller
             // ✅ Validate input
             $validator = Validator::make($request->all(), [
                 'email'    => 'required|string|email',
-                'password' => 'required|string|min:6',
+                'password' => 'required|string',
                 'deviceId' => 'nullable|string',
             ]);
     
