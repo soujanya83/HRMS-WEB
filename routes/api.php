@@ -86,6 +86,9 @@ Route::prefix('v1')->group(function () {
     Route::post('/employee/update-profile', [EmployeeController::class, 'updateEmployeeProfile']);
 
     Route::get('employeedata/{id}', [EmployeeController::class, 'show']);
+    Route::post('employee-documents_upload', [EmployeeDocumentController::class, 'store']);
+
+
 
 
     Route::post('/register', [AuthController::class, 'register']);
