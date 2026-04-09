@@ -25,7 +25,7 @@ class EmployeeInviteMail extends Mailable
 
     public function build()
     {
-        return $this->subject('Complete Your Profile - Chrispp HRMS')
+        return $this->subject('Complete Your Profile - ' . $this->data['organization_name'])
                     ->view('emails.employee_invite');
     }
 }

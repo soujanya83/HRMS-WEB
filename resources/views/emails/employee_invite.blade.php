@@ -15,7 +15,7 @@
                     <!-- Header -->
                     <tr>
                         <td style="background:#4CAF50; padding:20px; text-align:center; color:#ffffff;">
-                            <h2>Welcome to Chrispp 🚀</h2>
+                            <h2>Welcome to {{ $data['organization_name'] }} 🚀</h2>
                         </td>
                     </tr>
 
@@ -43,7 +43,12 @@
                             <p>If you have any questions, feel free to contact HR.</p>
 
                             <br>
-                            <p>Regards,<br><strong>Chrispp HR Team</strong></p>
+                         <p>
+                           <strong>Disclaimer :</strong><br>
+This communication, including any links and attachments, is confidential and intended solely for the named recipient. It may contain sensitive personal and/or employment-related information. Any unauthorised access, use, disclosure, copying, or distribution is strictly prohibited and may be unlawful.
+If you are not the intended recipient, you must not access or rely on this information. Please notify the sender immediately and permanently delete this communication from your system.
+CHRISPP does not accept liability for any unauthorised use of this communication or for any loss or damage arising from access to the link outside its intended purpose. Users are responsible for maintaining the confidentiality of their login credentials and for accessing the system in a secure manner.
+                         </p>
                         </td>
                     </tr>
 

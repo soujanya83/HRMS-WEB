@@ -9,6 +9,7 @@ use App\Mail\EmployeeInviteMail;
 use Illuminate\Support\Str;
 use App\Models\User;
 use App\Models\Employee\Employee;
+use App\Models\Organization;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 
@@ -95,11 +96,14 @@ class EmployeeInvitesEmailcontroller extends Controller
 
         // ✅ Generate link with employee ID
         $link = "https://chrispp.com/apply/" . $employee->id;
+        $organization_name = Organization::find($organizationId)->name;
+    
 
         // ✅ Email Data
         $data = [
             'name' => $request->name,
             'last_name' => $request->last_name,
+            'organization_name' => $organization_name,
             'link' => $link
         ];
 
