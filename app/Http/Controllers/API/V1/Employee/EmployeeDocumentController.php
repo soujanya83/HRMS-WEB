@@ -79,6 +79,70 @@ TEXT
         }
     }
 
+
+    private function extractIssueDateWithAI(string $ocrText): ?string
+{
+    $client = new Client();
+
+    try {
+        $response = $client->post('https://api.deepseek.com/chat/completions', [
+            'headers' => [
+                'Authorization' => 'Bearer ' . env('DEEPSEEK_API_KEY'),
+                'Content-Type'  => 'application/json',
+            ],
+            'json' => [
+                'model' => 'deepseek-chat',
+                'messages' => [
+                    [
+                        'role' => 'system',
+                        'content' => 'You extract issue dates from identity documents.'
+                    ],
+                    [
+                        'role' => 'user',
+                        'content' => <<<TEXT
+Extract the ISSUE DATE from the document text below.
+
+Rules:
+- Choose issue / date of issue / issued on date
+- DO NOT pick Date of Birth (DOB)
+- DO NOT pick Expiry / Valid Until date
+- Return ONLY in YYYY-MM-DD format
+- If not found, return NULL
+
+Document Text:
+"""
+$ocrText
+"""
+TEXT
+                    ]
+                ],
+                'temperature' => 0,
+            ],
+            'timeout' => 30,
+        ]);
+
+        $body = json_decode($response->getBody(), true);
+        $answer = trim($body['choices'][0]['message']['content'] ?? '');
+
+        if ($answer !== 'NULL' && strtotime($answer)) {
+            return date('Y-m-d', strtotime($answer));
+        }
+
+        return null;
+
+    } catch (\GuzzleHttp\Exception\RequestException $e) {
+        \Log::error('DeepSeek Issue Date RequestException: ' . $e->getMessage(), [
+            'code' => $e->getCode()
+        ]);
+        return null;
+
+    } catch (\Exception $e) {
+        \Log::error('DeepSeek Issue Date General Exception: ' . $e->getMessage(), [
+            'code' => $e->getCode()
+        ]);
+        return null;
+    }
+}
     // public function store(Request $request)
     // {
     //     $validated = $request->validate([
@@ -202,4 +266,164 @@ TEXT
         $docs = EmployeeDocument::where('employee_id', $employeeId)->orderBy('issue_date', 'desc')->get();
         return response()->json(['success' => true, 'data' => $docs]);
     }
+
+
+
+    public function storeFlexible(Request $request)
+{
+    try {
+        $validated = $request->validate([
+            'employee_id'   => 'required|exists:employees,id',
+            'document_type' => 'required|string|max:190',
+            'file_name'     => 'nullable|string|max:191',
+            'file'          => 'required|file|mimes:jpg,jpeg,png,pdf|max:10240',
+            'issue_date'    => 'nullable|date',
+            'expiry_date'   => 'nullable|date',
+        ]);
+
+        // Upload file
+        $path = $request->file('file')->store('employee_docs', 'public');
+        $validated['file_url'] = Storage::url($path);
+
+        $ocrText = '';
+
+        // 👉 Only run OCR if needed
+        if (!$request->issue_date || !$request->expiry_date) {
+
+            try {
+                $fileBytes = file_get_contents(storage_path('app/public/' . $path));
+
+                $textract = new TextractClient([
+                    'region'  => env('AWS_DEFAULT_REGION'),
+                    'version' => 'latest',
+                    'credentials' => [
+                        'key'    => env('AWS_ACCESS_KEY_ID'),
+                        'secret' => env('AWS_SECRET_ACCESS_KEY'),
+                    ],
+                ]);
+
+                $result = $textract->analyzeDocument([
+                    'Document' => ['Bytes' => $fileBytes],
+                    'FeatureTypes' => ['FORMS'],
+                ]);
+
+                foreach ($result['Blocks'] as $block) {
+                    if ($block['BlockType'] === 'LINE') {
+                        $ocrText .= $block['Text'] . "\n";
+                    }
+                }
+
+            } catch (\Throwable $e) {
+                \Log::error('Textract failed', ['error' => $e->getMessage()]);
+            }
+
+            // 👉 Try AI extraction only if OCR found something
+            if ($ocrText) {
+                if (!$request->expiry_date) {
+                    $validated['expiry_date'] = $this->extractExpiryWithAI($ocrText);
+                }
+
+                if (!$request->issue_date) {
+                    $validated['issue_date'] = $this->extractIssueDateWithAI($ocrText);
+                }
+            }
+        }
+
+        // ✅ Save anyway even if no dates found
+        $doc = EmployeeDocument::create($validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Document uploaded successfully',
+            'data'    => $doc
+        ], 201);
+
+    } catch (\Exception $e) {
+
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage()
+        ]);
+    }
+}
+
+
+public function updateDocumentDates(Request $request)
+{
+    try {
+        $validated = $request->validate([
+            'document_id' => 'required|exists:employee_documents,id',
+            'issue_date'  => 'nullable|date',
+            'expiry_date' => 'nullable|date',
+        ]);
+
+        $doc = EmployeeDocument::findOrFail($request->document_id);
+
+        $doc->update([
+            'issue_date'  => $request->issue_date ?? $doc->issue_date,
+            'expiry_date' => $request->expiry_date ?? $doc->expiry_date,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Document dates updated successfully',
+            'data' => $doc
+        ]);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage()
+        ]);
+    }
+}
+
+
+public function getEmployeeDocuments($employeeId)
+{
+    try {
+        $documents = EmployeeDocument::where('employee_id', $employeeId)->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $documents
+        ]);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage()
+        ]);
+    }
+}
+
+
+
+public function getDocumentById($documentId)
+{
+    try {
+        $document = EmployeeDocument::find($documentId);
+
+        if (!$document) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Document not found'
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $document
+        ]);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage()
+        ]);
+    }
+}
+
+
+
 }

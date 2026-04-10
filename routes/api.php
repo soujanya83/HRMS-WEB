@@ -88,6 +88,16 @@ Route::prefix('v1')->group(function () {
     Route::get('employeedata/{id}', [EmployeeController::class, 'show']);
     Route::post('employee-documents_upload', [EmployeeDocumentController::class, 'store']);
 
+    // Store (Flexible)
+Route::post('/employee/document/store-flexible', [EmployeeDocumentController::class, 'storeFlexible']);
+
+// Update Dates
+Route::post('/employee/document/update-dates', [EmployeeDocumentController::class, 'updateDocumentDates']);
+
+// Fetch Documents
+Route::get('/employee/{employee_id}/documents', [EmployeeDocumentController::class, 'getEmployeeDocuments']);
+Route::get('/employee/document/{document_id}', [EmployeeDocumentController::class, 'getDocumentById']);
+
 
 
 
