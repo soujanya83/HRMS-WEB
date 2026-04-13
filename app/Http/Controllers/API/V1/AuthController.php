@@ -10,6 +10,9 @@ use Illuminate\Support\Facades\Validator;
 use App\Models\User;
 use Illuminate\Support\Facades\Mail;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
+use App\Models\Organization;
+use App\Models\Employee\Employee;
 
 class AuthController extends Controller
 {
@@ -59,42 +62,56 @@ class AuthController extends Controller
         }
     }
 
-    public function login(Request $request)
-    {
-        try {
-            // ✅ Validate input
-            $validator = Validator::make($request->all(), [
-                'email'    => 'required|string|email',
-                'password' => 'required|string',
-                'deviceId' => 'nullable|string',
-            ]);
-    
-            if ($validator->fails()) {
-                return response()->json([
-                    'status'  => false,
-                    'message' => 'Validation errors',
-                    'errors'  => $validator->errors()
-                ], 422);
-            }
-    
-            // ✅ Check if user exists
-            $user = \App\Models\User::where('email', $request->email)->first();
-    
-            if (!$user) {
-                return response()->json([
-                    "status"  => false,
-                    "message" => "Email not found"
-                ], 404);
-            }
-    
-            // ✅ Check password
-            if (!Hash::check($request->password, $user->password)) {
-                return response()->json([
-                    "status"  => false,
-                    "message" => "Incorrect password"
-                ], 401);
-            }
-            // if (empty($user->device_id)) {
+  public function login(Request $request)
+{
+    try {
+        // ✅ Validate input
+        $validator = Validator::make($request->all(), [
+            'email'    => 'required|string|email',
+            'password' => 'required|string',
+            'deviceId' => 'nullable|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Validation errors',
+                'errors'  => $validator->errors()
+            ], 422);
+        }
+
+        // ✅ Check user
+        $user = \App\Models\User::where('email', $request->email)->first();
+
+        if (!$user) {
+            return response()->json([
+                "status"  => false,
+                "message" => "Email not found"
+            ], 404);
+        }
+
+        // ✅ Check password
+        if (!Hash::check($request->password, $user->password)) {
+            return response()->json([
+                "status"  => false,
+                "message" => "Incorrect password"
+            ], 401);
+        }
+
+        // ✅ Get Roles + Organizations
+        $rolesData = DB::table('user_organization_roles as uor')
+            ->join('roles as r', 'uor.role_id', '=', 'r.id')
+            ->join('organizations as o', 'uor.organization_id', '=', 'o.id')
+            ->where('uor.user_id', $user->id)
+            ->select(
+                'uor.organization_id',
+                'o.name as organization_name',
+                'r.name as role_name'
+            )
+            ->get();
+
+
+               // if (empty($user->device_id)) {
             //     // login, save device 
             //     $user->device_id = $request->deviceId;
             //     $user->save();
@@ -108,25 +125,27 @@ class AuthController extends Controller
             //     }
             // }
 
-            $token = $user->createToken("API Token")->plainTextToken;
-    
-            return response()->json([
-                "status"  => true,
-                "message" => "Login successful",
-                "data"    => [
-                    "user"  => $user,
-                    "token" => $token
-                ]
-            ], 200);
-    
-        } catch (\Exception $e) {
-            return response()->json([
-                "status"  => false,
-                "message" => "Something went wrong",
-                "error"   => $e->getMessage()
-            ], 500);
-        }
+        // ✅ Token
+        $token = $user->createToken("API Token")->plainTextToken;
+
+        return response()->json([
+            "status"  => true,
+            "message" => "Login successful",
+            "data"    => [
+                "user"  => $user,
+                "roles" => $rolesData, // 👈 important
+                "token" => $token
+            ]
+        ], 200);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            "status"  => false,
+            "message" => "Something went wrong",
+            "error"   => $e->getMessage()
+        ], 500);
     }
+}
     
     public function logout(Request $request)
     {
