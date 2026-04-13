@@ -19,7 +19,8 @@ class Department extends Model
     protected $fillable = [
         'organization_id',
         'name',
-        'description',
+        'age_group',
+        'color_code',
     ];
 
     /**
@@ -33,10 +34,10 @@ class Department extends Model
     /**
      * Get the designations for the department.
      */
-    public function designations(): HasMany
-    {
-        return $this->hasMany(Designation::class);
-    }
+    // public function designations(): HasMany
+    // {
+    //     return $this->hasMany(Designation::class);
+    // }
 
     public function employees(): HasMany
     {

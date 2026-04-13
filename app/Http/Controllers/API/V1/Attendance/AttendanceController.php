@@ -2003,4 +2003,294 @@ class AttendanceController extends Controller
     }
 }
 
+public function manualAttendance(Request $request): JsonResponse
+{
+    try {
+
+        /* ============================
+         | 1. BASIC VALIDATION
+         ============================ */
+        $validated = $request->validate([
+            'employee_id' => ['required', 'exists:employees,id'],
+            'date'        => ['required', 'date'],
+            'check_in'    => ['nullable', 'date_format:H:i'],
+            'check_out'   => ['nullable', 'date_format:H:i'],
+            'notes'       => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $employee = Employee::with('organization:id,timezone')
+            ->findOrFail($validated['employee_id']);
+
+        $timezone = $employee->organization->timezone ?? 'Australia/Sydney';
+
+        $dateInTz = Carbon::parse($validated['date'])
+            ->setTimezone($timezone)
+            ->format('Y-m-d');
+
+        $attendance = Attendance::where('employee_id', $employee->id)
+            ->where('date', $dateInTz)
+            ->first();
+
+        /* ============================
+         | 2. FORMAT TIMES
+         ============================ */
+        $checkInTime = null;
+        $checkOutTime = null;
+        $totalWorkingHours = 0;
+
+        if (!empty($validated['check_in'])) {
+            $checkInTime = Carbon::createFromFormat(
+                'Y-m-d H:i',
+                "{$dateInTz} {$validated['check_in']}"
+            )->format('H:i');
+        }
+
+        if (!empty($validated['check_out'])) {
+            $checkOutTime = Carbon::createFromFormat(
+                'Y-m-d H:i',
+                "{$dateInTz} {$validated['check_out']}"
+            )->format('H:i');
+        }
+
+        /* ============================
+         | 3. CALCULATE TOTAL HOURS
+         ============================ */
+        if ($checkInTime && $checkOutTime) {
+            $totalWorkingHours =
+                Carbon::parse($checkInTime)
+                    ->diffInMinutes(Carbon::parse($checkOutTime)) / 60;
+        }
+
+        /* ============================
+         | 4. CREATE OR UPDATE
+         ============================ */
+        if (!$attendance) {
+            $attendance = Attendance::create([
+                'employee_id'      => $employee->id,
+                'organization_id'  => $employee->organization_id,
+                'date'             => $dateInTz,
+                'check_in'         => $checkInTime,
+                'check_out'        => $checkOutTime,
+                'status'           => 'present',
+                'notes'            => $validated['notes'] ?? null,
+                'is_late'          => 0, // manual override
+                'total_work_hours' => $totalWorkingHours,
+            ]);
+        } else {
+            $attendance->update([
+                'check_in'         => $checkInTime ?? $attendance->check_in,
+                'check_out'        => $checkOutTime ?? $attendance->check_out,
+                'notes'            => $validated['notes'] ?? $attendance->notes,
+                'total_work_hours' => $totalWorkingHours,
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Manual attendance updated successfully.',
+            'data'    => $attendance,
+        ], 200);
+
+    } catch (\Exception $e) {
+
+        Log::error('Manual Attendance Error', [
+            'error' => $e->getMessage(),
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Something went wrong.',
+        ], 500);
+    }
+}
+
+
+public function breakStart(Request $request): JsonResponse
+{
+    try {
+
+        $validated = $request->validate([
+            'employee_id' => ['required', 'exists:employees,id'],
+            'date'        => ['required', 'date'],
+            'break_start' => ['required', 'date_format:H:i'],
+        ]);
+
+        $employee = Employee::findOrFail($validated['employee_id']);
+        $date = Carbon::parse($validated['date'])->format('Y-m-d');
+
+        // Weekend restriction
+        $dayOfWeek = Carbon::parse($date)->dayOfWeek;
+        if (in_array($dayOfWeek, [Carbon::SATURDAY, Carbon::SUNDAY])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Break not allowed on weekend.'
+            ], 422);
+        }
+
+        $attendance = Attendance::where('employee_id', $employee->id)
+            ->where('date', $date)
+            ->first();
+
+        if (!$attendance || !$attendance->check_in) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Employee must check-in first.'
+            ], 422);
+        }
+
+        if ($attendance->break_start) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Break already started.'
+            ], 422);
+        }
+
+        if ($attendance->check_out) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot start break after check-out.'
+            ], 422);
+        }
+
+        $attendance->update([
+            'break_start' => $validated['break_start']
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Break started successfully.',
+            'data' => $attendance
+        ]);
+
+    } catch (\Exception $e) {
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Something went wrong.'
+        ], 500);
+    }
+}
+
+
+public function breakEnd(Request $request): JsonResponse
+{
+    try {
+
+        $validated = $request->validate([
+            'employee_id' => ['required', 'exists:employees,id'],
+            'date'        => ['required', 'date'],
+            'break_end'   => ['required', 'date_format:H:i'],
+        ]);
+
+        $employee = Employee::findOrFail($validated['employee_id']);
+        $date = Carbon::parse($validated['date'])->format('Y-m-d');
+
+        $attendance = Attendance::where('employee_id', $employee->id)
+            ->where('date', $date)
+            ->first();
+
+        if (!$attendance || !$attendance->break_start) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Break has not been started.'
+            ], 422);
+        }
+
+        if ($attendance->break_end) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Break already ended.'
+            ], 422);
+        }
+
+        $breakStart = Carbon::parse($attendance->break_start);
+        $breakEnd   = Carbon::parse($validated['break_end']);
+
+        if ($breakEnd->lessThanOrEqualTo($breakStart)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Break end must be after break start.'
+            ], 422);
+        }
+
+        $breakMinutes = $breakStart->diffInMinutes($breakEnd);
+
+        $attendance->update([
+            'break_end' => $validated['break_end'],
+            'break_minutes' => $breakMinutes
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Break ended successfully.',
+            'data' => $attendance
+        ]);
+
+    } catch (\Exception $e) {
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Something went wrong.'
+        ], 500);
+    }
+}
+
+
+public function manualBreak(Request $request): JsonResponse
+{
+    try {
+
+        $validated = $request->validate([
+            'employee_id' => ['required', 'exists:employees,id'],
+            'date'        => ['required', 'date'],
+            'break_start' => ['nullable', 'date_format:H:i'],
+            'break_end'   => ['nullable', 'date_format:H:i'],
+        ]);
+
+        $employee = Employee::findOrFail($validated['employee_id']);
+        $date = Carbon::parse($validated['date'])->format('Y-m-d');
+
+        $attendance = Attendance::firstOrCreate(
+            [
+                'employee_id' => $employee->id,
+                'date' => $date,
+            ],
+            [
+                'organization_id' => $employee->organization_id,
+                'status' => 'present',
+            ]
+        );
+
+        $breakMinutes = 0;
+
+        if (!empty($validated['break_start']) && !empty($validated['break_end'])) {
+            $breakMinutes =
+                Carbon::parse($validated['break_start'])
+                    ->diffInMinutes(Carbon::parse($validated['break_end']));
+        }
+
+        $attendance->update([
+            'break_start' => $validated['break_start'] ?? $attendance->break_start,
+            'break_end' => $validated['break_end'] ?? $attendance->break_end,
+            'break_minutes' => $breakMinutes,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Manual break updated successfully.',
+            'data' => $attendance
+        ]);
+
+    } catch (\Exception $e) {
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Something went wrong.'
+        ], 500);
+    }
+}
+
+
+
+
 }

@@ -24,6 +24,7 @@ class Attendance extends Model
         'total_work_hours',
         'break_start',
         'break_end',
+        'break_minutes',
         'is_late'
     ];
 

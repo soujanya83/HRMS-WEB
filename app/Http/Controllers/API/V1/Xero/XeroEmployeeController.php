@@ -22,6 +22,8 @@ use App\Models\XeroPayRun;
 use App\Models\XeroPayslip;
 use Carbon\CarbonPeriod;
 use App\Models\PayPeriod; // Import the new model
+use App\Models\XeroLeaveType;
+use App\Models\XeroLeaveApplication;
 
 
 class XeroEmployeeController extends Controller
@@ -379,6 +381,250 @@ public function pushApproved(Request $request)
         'xero_failed' => $xeroFailed
     ]);
 }
+
+
+public function pushApprovedForEmployee(Request $request)
+{
+    Log::info('Xero Timesheet Push for Specific Employee Started', [
+        'request_data' => $request->all()
+    ]);
+
+    $orgId = $request->organization_id;
+    $employeeId = $request->employee_id;
+
+    // ----------------------------------------------------
+    // 1. VALIDATIONS
+    // ----------------------------------------------------
+    $request->validate([
+        'organization_id' => 'required|exists:organizations,id',
+        'employee_id' => 'required|exists:employees,id'
+    ]);
+
+    if (!$orgId || !$employeeId) {
+        Log::error('Required parameters missing', [
+            'organization_id' => $orgId,
+            'employee_id' => $employeeId
+        ]);
+        return response()->json([
+            'status' => false,
+            'message' => 'organization_id and employee_id are required'
+        ], 422);
+    }
+
+    // ----------------------------------------------------
+    // 2. XERO CONNECTION
+    // ----------------------------------------------------
+    try {
+        $connection = XeroConnection::where('organization_id', $orgId)
+            ->where('is_active', 1)
+            ->firstOrFail();
+
+        Log::info('Active Xero connection found', [
+            'connection_id' => $connection->id,
+            'tenant_id' => $connection->tenant_id
+        ]);
+    } catch (\Exception $e) {
+        Log::error('Active Xero connection NOT found', [
+            'organization_id' => $orgId,
+            'error' => $e->getMessage()
+        ]);
+
+        return response()->json([
+            'status' => false,
+            'message' => 'Active Xero connection not found'
+        ], 404);
+    }
+
+    // ----------------------------------------------------
+    // 3. TOKEN REFRESH
+    // ----------------------------------------------------
+    $connection = app(\App\Services\Xero\XeroTokenService::class)
+        ->refreshIfNeeded($connection);
+
+    Log::info('Xero token checked/refreshed');
+
+    // ----------------------------------------------------
+    // 4. FETCH SPECIFIC EMPLOYEE TIMESHEETS
+    // ----------------------------------------------------
+    $timesheets = Timesheet::where('organization_id', $orgId)
+        ->where('employee_id', $employeeId)
+        ->where('status', 'submitted')
+        ->whereNull('xero_synced_at')
+        ->get();
+
+    Log::info('Employee timesheets fetched', [
+        'employee_id' => $employeeId,
+        'total_timesheets' => $timesheets->count()
+    ]);
+
+    if ($timesheets->isEmpty()) {
+        return response()->json([
+            'status' => false,
+            'message' => 'No pending timesheets found for this employee'
+        ], 404);
+    }
+
+    // ----------------------------------------------------
+    // 5. EMPLOYEE XERO CONNECTION CHECK
+    // ----------------------------------------------------
+    $empXero = EmployeeXeroConnection::where('employee_id', $employeeId)->first();
+
+    if (!$empXero || !$empXero->xero_employee_id || !$empXero->OrdinaryEarningsRateID) {
+        Log::warning('Employee Xero data missing/incomplete', [
+            'employee_id' => $employeeId
+        ]);
+        return response()->json([
+            'status' => false,
+            'message' => 'Employee Xero connection incomplete or missing'
+        ], 422);
+    }
+
+    // ----------------------------------------------------
+    // 6. PREPARE TIMESHEET DATA (SAME LOGIC)
+    // ----------------------------------------------------
+    $mainRecord = $timesheets->first();
+    $startDate = Carbon::parse($mainRecord->from_date)->toDateString();
+    $endDate = Carbon::parse($mainRecord->to_date)->toDateString();
+
+    // Build daily hours array
+    $savedDailyData = $mainRecord->daily_breakdown;
+    if (is_string($savedDailyData)) {
+        $savedDailyData = json_decode($savedDailyData, true);
+    }
+    if (!is_array($savedDailyData)) {
+        $savedDailyData = [];
+    }
+
+    $period = CarbonPeriod::create($startDate, $endDate);
+    $dailyHours = [];
+
+    foreach ($period as $date) {
+        $dateStr = $date->toDateString();
+        $hours = isset($savedDailyData[$dateStr]) ? (float) $savedDailyData[$dateStr] : 0;
+        $dailyHours[] = $hours;
+    }
+
+    Log::info('Daily hours prepared for Xero', [
+        'employee_id' => $employeeId,
+        'start_date' => $startDate,
+        'daily_hours' => $dailyHours
+    ]);
+
+    // ----------------------------------------------------
+    // 7. PAYLOAD
+    // ----------------------------------------------------
+    $payload = [
+        [
+            'EmployeeID' => $empXero->xero_employee_id,
+            'StartDate' => $startDate,
+            'EndDate' => $endDate,
+            'Status' => 'DRAFT',
+            'TimesheetLines' => [
+                [
+                    'EarningsRateID' => $empXero->OrdinaryEarningsRateID,
+                    'NumberOfUnits' => $dailyHours,
+                ]
+            ]
+        ]
+    ];
+
+    Log::info('Xero timesheet payload prepared', [
+        'employee_id' => $employeeId,
+        'payload' => $payload
+    ]);
+
+    // ----------------------------------------------------
+    // 8. XERO API CALL
+    // ----------------------------------------------------
+    $response = Http::withHeaders([
+        'Authorization' => 'Bearer ' . $connection->access_token,
+        'Xero-Tenant-Id' => $connection->tenant_id,
+        'Accept' => 'application/json',
+    ])->post('https://api.xero.com/payroll.xro/1.0/Timesheets', $payload);
+
+    Log::info('Xero API response received', [
+        'employee_id' => $employeeId,
+        'status' => $response->status(),
+        'response' => $response->json()
+    ]);
+
+    if (!$response->successful()) {
+        Log::error('Xero API timesheet creation failed', [
+            'employee_id' => $employeeId,
+            'status' => $response->status(),
+            'response' => $response->body()
+        ]);
+        return response()->json([
+            'status' => false,
+            'message' => 'Failed to push timesheet to Xero',
+            'error' => $response->json()
+        ], 500);
+    }
+
+    // ----------------------------------------------------
+    // 9. SUCCESS HANDLING
+    // ----------------------------------------------------
+    $xeroResponse = $response->json();
+    $xero = $xeroResponse['Timesheets'][0] ?? null;
+
+    if (!$xero || !isset($xero['TimesheetID'])) {
+        Log::error('Xero response missing TimesheetID', [
+            'employee_id' => $employeeId
+        ]);
+        return response()->json([
+            'status' => false,
+            'message' => 'Invalid Xero response'
+        ], 500);
+    }
+
+    XeroTimesheet::create([
+        'organization_id' => $orgId,
+        'employee_xero_connection_id' => $empXero->id,
+        'xero_connection_id' => $connection->id,
+        'xero_timesheet_id' => $xero['TimesheetID'],
+        'xero_employee_id' => $empXero->xero_employee_id,
+        'start_date' => $startDate,
+        'end_date' => $endDate,
+        'total_hours' => array_sum($dailyHours),
+        'ordinary_hours' => array_sum($dailyHours),
+        'status' => 'CREATED',
+        'xero_data' => $xero,
+        'is_synced' => true,
+        'last_synced_at' => now(),
+    ]);
+
+    // Mark local timesheets as pushed
+    Timesheet::whereIn('id', $timesheets->pluck('id'))->update([
+        'xero_synced_at' => now(),
+        'xero_status' => 'pushed'
+    ]);
+
+    Log::info('Timesheet successfully pushed to Xero for employee', [
+        'employee_id' => $employeeId,
+        'timesheet_id' => $xero['TimesheetID']
+    ]);
+
+    // ----------------------------------------------------
+    // 10. FINAL RESPONSE
+    // ----------------------------------------------------
+    Log::info('Xero Timesheet Push for Employee Completed', [
+        'organization_id' => $orgId,
+        'employee_id' => $employeeId,
+        'xero_timesheet_id' => $xero['TimesheetID']
+    ]);
+
+    return response()->json([
+        'status' => true,
+        'message' => 'Timesheet pushed successfully',
+        'employee_id' => $employeeId,
+        'xero_timesheet_id' => $xero['TimesheetID'],
+        'total_hours' => array_sum($dailyHours),
+        'timesheets_synced' => $timesheets->count()
+    ]);
+}
+
+
+
 
 
  public function get_all_pay_periods(Request $request)
@@ -749,97 +995,6 @@ public function getAvailablePayPeriods(Request $request)
         }
         try { return Carbon::parse($xeroDate); } catch (\Exception $e) { return null; }
     }
-
-
-
-
-   
-    // ------------------------------------------------------------------
-    // 🧮 DATE CALCULATION HELPERS
-    // ------------------------------------------------------------------
-
-    // private function formatPeriod($periodData, $name, $type, $isCurrent)
-    // {
-    //     return [
-    //         'calendar_name' => $name,
-    //         'calendar_type' => $type,
-    //         'start_date' => $periodData['start']->toDateString(),
-    //         'end_date'   => $periodData['end']->toDateString(),
-    //         'number_of_days' => $periodData['days'],
-    //         'is_current' => $isCurrent
-    //     ];
-    // }
-
-    // private function findCurrentPeriod(Carbon $anchorDate, string $type, Carbon $targetDate)
-    // {
-    //     $period = $this->calculateEndDate($anchorDate, $type);
-    //     if (!$period) return null;
-
-    //     $start = $period['start'];
-    //     $end   = $period['end'];
-    //     $safety = 0;
-
-    //     while ($end->lt($targetDate) && $safety < 1000) {
-    //         if ($type === 'MONTHLY') $start->addMonth();
-    //         elseif ($type === 'QUARTERLY') $start->addMonths(3);
-    //         elseif ($type === 'WEEKLY') $start->addWeeks(1);
-    //         elseif ($type === 'FORTNIGHTLY') $start->addWeeks(2);
-    //         else $start->addDays($period['days']);
-            
-    //         $period = $this->calculateEndDate($start, $type);
-    //         $end = $period['end'];
-    //         $safety++;
-    //     }
-    //     return $period;
-    // }
-
-    // private function calculateNextPeriod(Carbon $currentStartDate, string $type)
-    // {
-    //     $nextStart = $currentStartDate->copy();
-    //     if ($type === 'MONTHLY') $nextStart->addMonth();
-    //     elseif ($type === 'QUARTERLY') $nextStart->addMonths(3);
-    //     elseif ($type === 'WEEKLY') $nextStart->addWeeks(1);
-    //     elseif ($type === 'FORTNIGHTLY') $nextStart->addWeeks(2);
-    //     elseif ($type === 'FOURWEEKLY') $nextStart->addWeeks(4);
-    //     return $this->calculateEndDate($nextStart, $type);
-    // }
-
-    // private function calculatePreviousPeriod(Carbon $currentStartDate, string $type)
-    // {
-    //     $prevStart = $currentStartDate->copy();
-    //     if ($type === 'MONTHLY') $prevStart->subMonth();
-    //     elseif ($type === 'QUARTERLY') $prevStart->subMonths(3);
-    //     elseif ($type === 'WEEKLY') $prevStart->subWeeks(1);
-    //     elseif ($type === 'FORTNIGHTLY') $prevStart->subWeeks(2);
-    //     elseif ($type === 'FOURWEEKLY') $prevStart->subWeeks(4);
-    //     return $this->calculateEndDate($prevStart, $type);
-    // }
-
-    // private function calculateEndDate(Carbon $startDate, string $type)
-    // {
-    //     $start = $startDate->copy();
-    //     $end   = $startDate->copy();
-    //     $days  = 0;
-    //     switch ($type) {
-    //         case 'WEEKLY': $end->addDays(6); $days = 7; break;
-    //         case 'FORTNIGHTLY': $end->addDays(13); $days = 14; break;
-    //         case 'MONTHLY': $end->addMonth()->subDay(); $days = $start->diffInDays($end) + 1; break;
-    //         case 'FOURWEEKLY': $end->addDays(27); $days = 28; break;
-    //         case 'QUARTERLY': $end->addMonths(3)->subDay(); $days = $start->diffInDays($end) + 1; break;
-    //         default: return null;
-    //     }
-    //     return ['start' => $start, 'end' => $end, 'days' => $days];
-    // }
-
-    // private function parseXeroDate($xeroDate)
-    // {
-    //     if (!$xeroDate) return null;
-    //     if (preg_match('/\/Date\((\d+)([+-]\d+)?\)\//', $xeroDate, $matches)) {
-    //         return Carbon::createFromTimestampMs($matches[1]);
-    //     }
-    //     try { return Carbon::parse($xeroDate); } catch (\Exception $e) { return null; }
-    // }
-
 
 //-----------------------------------------------------------------------------------------------------------
 
@@ -1267,5 +1422,237 @@ public function employeeshow($id)
     ]);
 }
 
+
+
+
+//-----------------------------------------------------------------
+//for leaves --------------------------------
+
+
+// ----------------------------------------------------------------
+    // 1. SYNC LEAVE TYPES (Configuration Page ke liye)
+    // ----------------------------------------------------------------
+   public function syncLeaveTypes(Request $request)
+    {
+        $request->validate(['organization_id' => 'required']);
+        $orgId = $request->organization_id;
+
+        $connection = $this->getXeroConnection($orgId);
+
+        // ✅ 1. Changed URL to PayItems
+        $response = Http::withHeaders($this->getHeaders($connection))
+            ->get('https://api.xero.com/payroll.xro/1.0/PayItems');
+
+        if (!$response->successful()) {
+            // ✅ 2. Better Error Handling to see exactly what Xero is complaining about
+            return response()->json([
+                'status' => false, 
+                'message' => 'Failed to fetch Pay Items from Xero',
+                'xero_status' => $response->status(),
+                'xero_error' => $response->json() // This will print the actual error
+            ], $response->status());
+        }
+
+        // ✅ 3. Corrected JSON Parsing (LeaveTypes is inside PayItems)
+        $leaveTypes = $response->json()['PayItems']['LeaveTypes'] ?? [];
+
+        foreach ($leaveTypes as $type) {
+            XeroLeaveType::updateOrCreate(
+                ['xero_leave_type_id' => $type['LeaveTypeID']],
+                [
+                    'organization_id' => $orgId,
+                    'name' => $type['Name'],
+                    'type_of_units' => $type['TypeOfUnits'] ?? 'Hours',
+                    'is_paid_leave' => $type['IsPaidLeave'] ?? true,
+                    'show_on_payslip' => $type['ShowOnPayslip'] ?? true,
+                ]
+            );
+        }
+
+        return response()->json([
+            'status' => true, 
+            'message' => 'Leave Types Synced Successfully',
+            'data' => XeroLeaveType::where('organization_id', $orgId)->get()
+        ]);
+    }
+
+    // ----------------------------------------------------------------
+    // 2. CREATE/PUSH LEAVE TO XERO (Jab Manager Approve kare)
+    // ----------------------------------------------------------------
+    public function applyLeave(Request $request)
+    {
+        $request->validate([
+            'organization_id' => 'required',
+            'employee_id'     => 'required', // Local Employee ID
+            'leave_type_id'   => 'required', // Xero Leave Type ID (Select from DB)
+            'start_date'      => 'required|date',
+            'end_date'        => 'required|date',
+            'description'     => 'nullable|string',
+            'local_leave_id'  => 'nullable' // Optional: Link to local HRMS
+        ]);
+
+        $orgId = $request->organization_id;
+
+        // 1. Get Connections
+        $connection = $this->getXeroConnection($orgId);
+        $empConn = EmployeeXeroConnection::where('employee_id', $request->employee_id)->firstOrFail();
+
+        // 2. Prepare Payload
+        $payload = [
+            [
+                "EmployeeID" => $empConn->xero_employee_id,
+                "LeaveTypeID" => $request->leave_type_id,
+                "Title" => $request->description ?? 'Leave Application',
+                "StartDate" => $request->start_date,
+                "EndDate" => $request->end_date,
+                "Description" => "Applied via HRMS"
+            ]
+        ];
+
+        // 3. Send to Xero
+        $response = Http::withHeaders($this->getHeaders($connection))
+            ->post('https://api.xero.com/payroll.xro/1.0/LeaveApplications', $payload);
+
+        if (!$response->successful()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Xero Error',
+                'details' => $response->json()
+            ], $response->status());
+        }
+
+        // 4. Save Response to DB
+        $xeroData = $response->json()['LeaveApplications'][0];
+
+        $leaveApp = XeroLeaveApplication::create([
+            'organization_id' => $orgId,
+            'employee_xero_connection_id' => $empConn->id,
+            'xero_connection_id' => $connection->id,
+            'xero_leave_id' => $xeroData['LeaveApplicationID'],
+            'xero_employee_id' => $empConn->xero_employee_id,
+            'xero_leave_type_id' => $request->leave_type_id,
+            'start_date' => $request->start_date,
+            'end_date' => $request->end_date,
+            'status' => 'APPROVED', // Usually pushes as Approved
+            'title' => $request->description,
+            'xero_data' => $xeroData,
+            'is_synced' => true,
+            'last_synced_at' => now(),
+            // 'local_leave_id' => $request->local_leave_id // Uncomment if you added the column
+        ]);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Leave pushed to Xero successfully',
+            'data' => $leaveApp
+        ]);
+    }
+
+    // ----------------------------------------------------------------
+    // 3. FETCH LEAVES (List View)
+    // ----------------------------------------------------------------
+    public function index(Request $request)
+    {
+        $query = XeroLeaveApplication::with('employeeConnection.employee');
+
+        if ($request->has('organization_id')) {
+            $query->where('organization_id', $request->organization_id);
+        }
+        
+        // Filter by specific employee
+        if ($request->has('employee_id')) {
+            $query->whereHas('employeeConnection', function($q) use ($request){
+                $q->where('employee_id', $request->employee_id);
+            });
+        }
+
+        return response()->json([
+            'status' => true,
+            'data' => $query->orderByDesc('start_date')->get()
+        ]);
+    }
+
+    // --- Private Helpers ---
+    private function getXeroConnection($orgId) {
+        $connection = XeroConnection::where('organization_id', $orgId)->where('is_active', 1)->firstOrFail();
+        return app(\App\Services\Xero\XeroTokenService::class)->refreshIfNeeded($connection);
+    }
+
+    private function getHeaders($connection) {
+        return [
+            'Authorization' => 'Bearer ' . $connection->access_token,
+            'Xero-Tenant-Id' => $connection->tenant_id,
+            'Accept' => 'application/json'
+        ];
+    }
+
+
+
+//--------------------------------------------------------------------------------
+
+ public function getByOrganization(Request $request)
+    {
+        try {
+
+            // Validate request
+            $request->validate([
+                'organization_id' => 'required|integer'
+            ]);
+
+            $organizationId = $request->organization_id;
+
+            // Fetch data
+            $payRuns = XeroPayRun::where('organization_id', $organizationId)
+                                    ->orderBy('id', 'desc')
+                                    ->get();
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Pay runs fetched successfully',
+                'data' => $payRuns
+            ], 200);
+
+        } catch (\Exception $e) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Something went wrong',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+
+    public function getByOrganizationpayslip(Request $request)
+    {
+        try {
+
+            // Validate request
+            $request->validate([
+                'organization_id' => 'required|integer'
+            ]);
+
+            $organizationId = $request->organization_id;
+
+            // Fetch payslips by organization_id
+            $payslips = XeroPayslip::where('organization_id', $organizationId)
+                                    ->orderBy('id', 'desc')
+                                    ->get();
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Payslips fetched successfully',
+                'data' => $payslips
+            ], 200);
+
+        } catch (\Exception $e) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Something went wrong',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 
    }

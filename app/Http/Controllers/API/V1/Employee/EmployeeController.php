@@ -28,8 +28,9 @@ use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Auth\Passwords\PasswordBroker;
 use Throwable;
-
 use Exception;
+use App\Models\EmployeeXeroConnection;
+use Illuminate\Support\Facades\Crypt;
 
 class EmployeeController extends Controller
 {
@@ -105,7 +106,7 @@ class EmployeeController extends Controller
             'personal_email' => ['required', 'email', 'max:190'],
 
             'date_of_birth' => ['required','date'],
-            'gender' => ['required', Rule::in(['Male','Female','Other'])],
+            'gender' => ['required', Rule::in(['Male','Female','Other','Prefer not to say'])],
             'phone_number' => ['required','string','max:20'],
             'address' => ['required','string','max:1000'],
             'joining_date' => ['required','date'],
@@ -121,6 +122,7 @@ class EmployeeController extends Controller
 
             'visa_type' => ['nullable','string','max:50'],
             'visa_expiry_date' => ['nullable','date'],
+            'hourly_wage' => ['nullable','numeric','min:0'],
 
             'emergency_contact_name' => ['nullable','string','max:255'],
             'emergency_contact_phone' => ['nullable','string','max:30'],
@@ -246,6 +248,8 @@ class EmployeeController extends Controller
         return $this->serverError('Failed to create employee', $e);
     }
 }
+
+
     public function update(Request $request, $id): JsonResponse
     {
         try {
@@ -263,7 +267,7 @@ class EmployeeController extends Controller
                 'last_name' => 'sometimes|string|max:190',
                 'personal_email' => 'sometimes|email|max:190|unique:employees,personal_email,' . $id,
                 'date_of_birth' => 'sometimes|date',
-                'gender' => 'sometimes|in:Male,Female,Other',
+                'gender' => 'sometimes|in:Male,Female,Other,Prefer not to say',
                 'phone_number' => 'sometimes|string|max:20',
                 'address' => 'sometimes|string|max:1000',
                 'joining_date' => 'sometimes|date',
@@ -274,7 +278,7 @@ class EmployeeController extends Controller
                 'superannuation_member_number' => 'nullable|string|max:100',
                 'bank_bsb' => 'nullable|string|max:10',
                 'bank_account_number' => 'nullable|string|max:30',
-                'visa_type' => 'nullable|string|max:50',
+                'hourly_wage' => 'nullable|numeric|min:0',
                 'visa_expiry_date' => 'nullable|date',
                 'emergency_contact_name' => 'nullable|string|max:255',
                 'emergency_contact_phone' => 'nullable|string|max:30',
@@ -309,11 +313,41 @@ class EmployeeController extends Controller
         }
     }
 
-    public function getTrashed(): JsonResponse
-    {
-        $employees = Employee::onlyTrashed()->with(['user', 'organization'])->get();
-        return response()->json(['success' => true, 'data' => $employees], 200);
+  public function getTrashed(Request $request): JsonResponse
+{
+    try {
+
+        /* ===============================
+         | 1. VALIDATION
+         =============================== */
+        $validated = $request->validate([
+            'organization_id' => ['required', 'exists:organizations,id'],
+        ]);
+
+        /* ===============================
+         | 2. FETCH SOFT DELETED EMPLOYEES
+         =============================== */
+        $employees = Employee::onlyTrashed()
+            ->where('organization_id', $validated['organization_id'])
+            ->with(['user', 'organization'])
+            ->orderByDesc('deleted_at')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $employees
+        ], 200);
+
+    } catch (\Exception $e) {
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Something went wrong.',
+            'error' => $e->getMessage()
+        ], 500);
     }
+}
+
 
     public function restore($id): JsonResponse
     {
@@ -331,20 +365,56 @@ class EmployeeController extends Controller
         }
     }
 
-    public function forceDelete($id): JsonResponse
-    {
-        try {
-            $employee = Employee::onlyTrashed()->findOrFail($id);
-            $employee->forceDelete();
+  public function forceDelete($id): JsonResponse
+{
+    DB::beginTransaction();
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Employee permanently deleted'
-            ], 200);
-        } catch (Exception $e) {
-            return $this->serverError('Failed to permanently delete employee', $e);
+    try {
+
+        // Get soft deleted employee
+        $employee = Employee::onlyTrashed()->findOrFail($id);
+
+        /* ==============================
+         | 1. Delete EmployeeXeroConnection
+         ============================== */
+        EmployeeXeroConnection::where('employee_id', $employee->id)
+            ->delete();
+
+        /* ==============================
+         | 2. Delete Related User (if exists)
+         ============================== */
+        if (!empty($employee->user_id)) {
+
+            $user = User::find($employee->user_id);
+
+            if ($user) {
+                $user->delete(); // use forceDelete() if user also soft deletes
+            }
         }
+
+        /* ==============================
+         | 3. Force Delete Employee
+         ============================== */
+        $employee->forceDelete();
+
+        DB::commit();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Employee and related data permanently deleted.'
+        ], 200);
+
+    } catch (\Exception $e) {
+
+        DB::rollBack();
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to permanently delete employee.',
+            'error' => $e->getMessage()
+        ], 500);
     }
+}
 
     public function getByStatus($status): JsonResponse
     {
@@ -370,7 +440,7 @@ class EmployeeController extends Controller
 
     public function getByOrganization($id): JsonResponse
     {
-        $employees = Employee::where('organization_id', $id)->with(['organization', 'department', 'designation'])->get();
+        $employees = Employee::where('organization_id', $id)->with(['organization', 'department', 'designation','xeroEmployeeConnection'])->get();
         return response()->json(['success' => true, 'data' => $employees], 200);
     }
 
@@ -530,4 +600,344 @@ class EmployeeController extends Controller
             'message' => 'Xero synchronization not yet implemented'
         ], 200);
     }
+
+
+
+
+
+    public function storeOrUpdateBasic(Request $request): JsonResponse
+    {
+        try {
+
+            $employeeId = $request->input('employee_id'); // optional for update
+            $userId = $request->input('user_id');
+
+            $rules = [
+
+                'employee_id' => ['nullable', 'exists:employees,id'],
+
+                'organization_id' => ['required', 'exists:organizations,id'],
+
+                'user_id' => [
+                    'nullable',
+                    'exists:users,id',
+                    Rule::unique('employees', 'user_id')->ignore($employeeId)
+                ],
+
+                'applicant_id' => [
+                    'nullable',
+                    'exists:applicants,id',
+                    Rule::unique('employees', 'applicant_id')->ignore($employeeId)
+                ],
+
+                'first_name' => ['required', 'string', 'max:190'],
+                'last_name' => ['required', 'string', 'max:190'],
+
+                'personal_email' => [
+                    'required',
+                    'email',
+                    'max:190',
+                    Rule::unique('users', 'email')->ignore($userId),
+                    Rule::unique('employees', 'personal_email')->ignore($employeeId),
+                ],
+
+                'phone_number' => ['required', 'string', 'max:20'],
+
+                'date_of_birth' => ['required', 'date'],
+
+                'gender' => [
+                    'required',
+                    Rule::in(['Male', 'Female', 'Other', 'Prefer not to say'])
+                ],
+
+                'address' => ['required', 'string', 'max:1000'],
+
+                'emergency_contact_name' => ['nullable', 'string', 'max:255'],
+
+                'emergency_contact_phone' => ['nullable', 'string', 'max:30'],
+
+                'emergency_contact_relationship' => ['nullable', 'string', 'max:100'],
+
+            ];
+
+            $validated = $request->validate($rules);
+
+            $result = DB::transaction(function () use ($validated, $employeeId, $userId) {
+
+                $user = null;
+                $rawPassword = null;
+
+                /*
+                |--------------------------------------------------------------------------
+                | USER CREATE OR USE EXISTING
+                |--------------------------------------------------------------------------
+                */
+
+                if ($userId) {
+
+                    $user = User::findOrFail($userId);
+
+                    if ($user->email !== $validated['personal_email']) {
+                        throw ValidationException::withMessages([
+                            'personal_email' => ['Email does not match existing user']
+                        ]);
+                    }
+
+                    // Update name if changed
+                    $user->update([
+                        'name' => $validated['first_name'] . ' ' . $validated['last_name'],
+                    ]);
+
+                } else {
+
+                    $rawPassword = 12345678;
+
+                    $user = User::create([
+                        'name' => $validated['first_name'] . ' ' . $validated['last_name'],
+                        'email' => $validated['personal_email'],
+                        'password' => Hash::make($rawPassword),
+                    ]);
+
+                    $user->assignRoleForOrganization(
+                        'employee',
+                        $validated['organization_id']
+                    );
+                }
+
+
+                /*
+                |--------------------------------------------------------------------------
+                | EMPLOYEE CREATE OR UPDATE
+                |--------------------------------------------------------------------------
+                */
+
+                $employeeData = [
+
+                    'organization_id' => $validated['organization_id'],
+                    'user_id' => $user->id,
+                    'applicant_id' => $validated['applicant_id'] ?? null,
+
+                    'first_name' => $validated['first_name'],
+                    'last_name' => $validated['last_name'],
+                    'personal_email' => $validated['personal_email'],
+                    'phone_number' => $validated['phone_number'],
+                    'date_of_birth' => $validated['date_of_birth'],
+                    'gender' => $validated['gender'],
+                    'address' => $validated['address'],
+
+                    'emergency_contact_name' =>
+                        $validated['emergency_contact_name'] ?? null,
+
+                    'emergency_contact_phone' =>
+                        $validated['emergency_contact_phone'] ?? null,
+
+                    'emergency_contact_relationship' =>
+                        $validated['emergency_contact_relationship'] ?? null,
+                ];
+
+                if ($employeeId) {
+
+                    $employee = Employee::findOrFail($employeeId);
+
+                    $employee->update($employeeData);
+
+                    $action = 'updated';
+
+                } else {
+
+                    $employee = Employee::create($employeeData);
+
+                    $action = 'created';
+                }
+
+                return [
+                    'user' => $user,
+                    'employee' => $employee,
+                    'raw_password' => $rawPassword,
+                    'action' => $action
+                ];
+            });
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | SEND EMAIL ONLY IF USER CREATED
+            |--------------------------------------------------------------------------
+            */
+
+            if (!empty($result['raw_password'])) {
+
+                try {
+
+                    $mailable = new WelcomeEmployee(
+                        $result['user'],
+                        $result['raw_password'],
+                        null
+                    );
+
+                    Mail::to($result['user']->email)->send($mailable);
+
+                } catch (Throwable $mailEx) {
+
+                    Log::error(
+                        'Welcome email failed: ' . $mailEx->getMessage()
+                    );
+                }
+            }
+
+
+            return response()->json([
+
+                'success' => true,
+
+                'message' =>
+                    'Employee basic details '
+                    . $result['action']
+                    . ' successfully',
+
+                'data' => [
+
+                    'user' => $result['user'],
+                    'employee' => $result['employee'],
+
+                    'generated_password' =>
+                        $result['raw_password'] ?? null
+                ]
+
+            ], 200);
+
+
+        } catch (ValidationException $e) {
+
+            return $this->validationError($e);
+
+        } catch (Exception $e) {
+
+            return $this->serverError(
+                'Failed to save employee basic details',
+                $e
+            );
+        }
+    }
+
+
+
+
+public function updateEmployeeProfile(Request $request)
+{
+    try {
+        // ✅ Validation
+        $request->validate([
+            'employee_id' => 'required|exists:employees,id',
+
+            'first_name' => 'required|string|max:190',
+            'middle_name' => 'nullable|string|max:190',
+            'last_name' => 'required|string|max:190',
+
+            'email' => 'required|email|max:190',
+            'phone_number' => 'required|string|max:20',
+
+            'date_of_birth' => 'required|date',
+            'gender' => ['required', Rule::in(['Male','Female','Other','Prefer not to say'])],
+
+            'address' => 'required|string|max:1000',
+
+            'emergency_contact_name' => 'required|string|max:255',
+            'emergency_contact_phone' => 'required|string|max:30',
+            'emergency_contact_relationship' => 'required|string|max:100',
+
+            'tax_file_number' => 'required|string|max:100',
+
+            'superannuation_fund_name' => 'nullable|string|max:255',
+            'superannuation_member_number' => 'nullable|string|max:100',
+
+            'bank_bsb' => 'nullable|string|max:10',
+            'bank_account_number' => 'nullable|string|max:30',
+
+            // Optional visa fields
+            'citizenship_status' => 'nullable|in:Citizen,PR,Visa',
+            'is_australian_citizen' => 'nullable|boolean',
+            'is_pr' => 'nullable|boolean',
+            'visa_type' => 'nullable|string|max:50',
+        ]);
+
+        DB::beginTransaction();
+
+        // ✅ Get employee
+        $employee = Employee::findOrFail($request->employee_id);
+
+        // ✅ Update user email (if changed)
+        $user = User::find($employee->user_id);
+
+        // if ($user && $user->email !== $request->email) {
+        //     $request->validate([
+        //         'email' => [
+        //             'required',
+        //             'email',
+        //             Rule::unique('users', 'email')->ignore($user->id),
+        //         ]
+        //     ]);
+
+        //     $user->update([
+        //         'email' => $request->email,
+        //         'name' => trim($request->first_name . ' ' . $request->last_name),
+        //     ]);
+        // }
+
+        // ✅ Encrypt TFN
+        $encryptedTFN = Crypt::encryptString($request->tax_file_number);
+
+        // ✅ Update employee
+        $employee->update([
+            'first_name' => $request->first_name,
+            'middle_name' => $request->middle_name,
+            'last_name' => $request->last_name,
+            'personal_email' => $request->email,
+            'phone_number' => $request->phone_number,
+            'date_of_birth' => $request->date_of_birth,
+            'gender' => $request->gender,
+            'address' => $request->address,
+
+            'emergency_contact_name' => $request->emergency_contact_name,
+            'emergency_contact_phone' => $request->emergency_contact_phone,
+            'emergency_contact_relationship' => $request->emergency_contact_relationship,
+
+            'tax_file_number' => $encryptedTFN,
+
+            'superannuation_fund_name' => $request->superannuation_fund_name,
+            'superannuation_member_number' => $request->superannuation_member_number,
+
+            'bank_bsb' => $request->bank_bsb,
+            'bank_account_number' => $request->bank_account_number,
+
+            // Visa / citizenship
+            'citizenship_status' => $request->citizenship_status,
+            'is_australian_citizen' => $request->is_australian_citizen,
+            'is_pr' => $request->is_pr,
+            'visa_type' => $request->visa_type,
+        ]);
+
+        DB::commit();
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Employee profile updated successfully',
+            'data' => $employee
+        ]);
+
+    } catch (\Exception $e) {
+
+        DB::rollBack();
+
+        return response()->json([
+            'status' => false,
+            'message' => $e->getMessage()
+        ]);
+    }
+}
+
+
+
+
+
 }

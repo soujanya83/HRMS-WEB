@@ -25,6 +25,9 @@ class Employee extends Model
 {
     use HasFactory, SoftDeletes;
 
+        protected $appends = ['xero_synced_status'];
+
+
     protected $fillable = [
         'organization_id',
         'user_id',
@@ -34,6 +37,7 @@ class Employee extends Model
         'reporting_manager_id',
         'employee_code',
         'first_name',
+        'middle_name',
         'last_name',
         'personal_email',
         'date_of_birth',
@@ -48,19 +52,25 @@ class Employee extends Model
         'superannuation_member_number',
         'bank_bsb',
         'bank_account_number',
+        'hourly_wage',
         'visa_type',
         'visa_expiry_date',
         'emergency_contact_name',
         'emergency_contact_phone',
+        'emergency_contact_relationship',
         'face_embedding',
         'is_face_registered',
         'profile_image_url',
+        'citizenship_status',
+        'is_australian_citizen',
+        'is_pr',
     ];
 
     protected $casts = [
         'face_embedding' => 'array',
         'is_face_registered' => 'boolean',
     ];
+
 
     // Relationships
     public function user()
@@ -143,4 +153,14 @@ class Employee extends Model
     {
         return $this->hasOne(EmployeeXeroConnection::class, 'employee_id', 'id');
     }
+    
+    public function getXeroSyncedStatusAttribute()
+{
+    if ($this->xeroEmployeeConnection && $this->xeroEmployeeConnection->is_synced == 1) {
+        return 'Synced';
+    }
+
+    return 'Not-Synced';
+}
+
 }

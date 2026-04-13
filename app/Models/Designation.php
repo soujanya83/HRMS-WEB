@@ -16,7 +16,7 @@ class Designation extends Model
      * @var array<int, string>
      */
     protected $fillable = [
-        'department_id',
+        'organization_id',
         'title',
         'level',
     ];
@@ -24,8 +24,8 @@ class Designation extends Model
     /**
      * Get the department that the designation belongs to.
      */
-    public function department(): BelongsTo
+  public function organization(): BelongsTo
     {
-        return $this->belongsTo(Department::class);
+        return $this->belongsTo(Organization::class);
     }
 }

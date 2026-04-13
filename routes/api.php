@@ -58,6 +58,11 @@ use App\Http\Controllers\API\V1\Xero\XeroConnectionController;
 use App\Http\Controllers\API\V1\Xero\XeroEmployeeController;
 use App\Http\Controllers\API\V1\ProfilePinController;
 use App\Http\Controllers\API\V1\Employee\FaceController;
+use App\Http\Controllers\API\V1\XeroLeaveTypeController;
+use App\Http\Controllers\API\V1\XeroLeaveApplicationController;
+use App\Http\Controllers\API\V1\EmployeeInvitesEmailcontroller;
+use App\Http\Controllers\API\V1\InterviewQuestionController;
+use App\Http\Controllers\API\V1\ApplicantAnswerController;
 
 use App\Http\Controllers\API\V1\{
     RoleController,
@@ -74,9 +79,33 @@ use App\Http\Controllers\API\V1\{
 
 
 
+
 Route::prefix('v1')->group(function () {
+
+    Route::post('/send-invite', [EmployeeInvitesEmailcontroller::class, 'sendInvite']);
+    Route::post('/employee/update-profile', [EmployeeController::class, 'updateEmployeeProfile']);
+
+    Route::get('employeedata/{id}', [EmployeeController::class, 'show']);
+    Route::post('employee-documents_upload', [EmployeeDocumentController::class, 'store']);
+
+    // Store (Flexible)
+Route::post('/employee/document/store-flexible', [EmployeeDocumentController::class, 'storeFlexible']);
+
+// Update Dates
+Route::post('/employee/document/update-dates', [EmployeeDocumentController::class, 'updateDocumentDates']);
+
+// Fetch Documents
+Route::get('/employee/{employee_id}/documents', [EmployeeDocumentController::class, 'getEmployeeDocuments']);
+Route::get('/employee/document/{document_id}', [EmployeeDocumentController::class, 'getDocumentById']);
+
+
+
+
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
+    Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+    Route::post('/verify-otp', [AuthController::class, 'verifyOtp']);
+    Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 
 
     // Profile Pin APIs
@@ -141,6 +170,7 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('organizations', OrganizationController::class);
         // protected routes here
         // });
+        Route::get('/fund-suggestions', [OrganizationController::class, 'search']);
 
         // employeement type
         Route::apiResource('employment-types', EmploymentTypeController::class);
@@ -148,7 +178,7 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('organizations.departments', DepartmentController::class)->shallow();
 
         // Nested Designation Routes
-        Route::apiResource('departments.designations', DesignationController::class)->shallow();
+        Route::apiResource('organizations.designations', DesignationController::class)->shallow();
 
         Route::apiResource('attendances', AttendanceController::class);
 
@@ -173,6 +203,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/timesheets/{id}', [TimesheetController::class, 'update']);
 
         Route::post('/xero/timesheets/push', [XeroEmployeeController::class, 'pushApproved']);
+        Route::post('/xero/timesheet/push-employee', [XeroEmployeeController::class, 'pushApprovedForEmployee'])->name('xero.timesheet.push.employee');
 
         Route::get('/available-pay-periods', [XeroEmployeeController::class, 'getAvailablePayPeriods']);
         Route::get('/pay-periods', [XeroEmployeeController::class, 'get_all_pay_periods']);
@@ -181,15 +212,35 @@ Route::prefix('v1')->group(function () {
 
          Route::post('/xero/payruns/create', [XeroEmployeeController::class, 'create']);
          Route::get('/xero/payruns', [XeroEmployeeController::class, 'show'])->name('xero.payruns');
+         Route::post('/xero-payruns/by-organization', [XeroEmployeeController::class, 'getByOrganization']);
          Route::post('/xero/payruns/{id}/approve', [XeroEmployeeController::class, 'approve']);
 
          Route::post('/xero/payslips/sync', [XeroEmployeeController::class, 'syncPayslips']);
+         Route::post('/xero-payslips/by-organization', [XeroEmployeeController::class, 'getByOrganizationpayslip']);
+
 
                  Route::get('/xero/payslips', [XeroEmployeeController::class, 'payslipget']);
 
             Route::get('/xero/payslips/{id}', [XeroEmployeeController::class, 'employeeshow']);
 
         //  Route::get('/xero/payslips', [XeroEmployeeController::class, 'payslips']);
+
+        //leave of XEROOOOO ----------------
+
+        // 1. Sync Leave Types (Admin Config Page)
+            Route::post('/xero/leaves/sync-types', [XeroEmployeeController::class, 'syncLeaveTypes']);
+
+            // 2. Get All Leaves / Employee Leaves (History)
+            Route::get('/xero/leaves', [XeroEmployeeController::class, 'index']);
+
+            // 3. Apply/Push Leave to Xero (Manager Approval Action)
+            Route::post('/xero/leaves/apply', [XeroEmployeeController::class, 'applyLeave']);
+
+
+             Route::post('/xero-leave-types', [XeroLeaveTypeController::class, 'index']);
+             Route::post('/xero-leave-applications', [XeroLeaveApplicationController::class, 'index']);
+
+
 
 
 
@@ -347,7 +398,7 @@ Route::prefix('v1')->group(function () {
             Route::put('/{id}', [EmployeeController::class, 'update']);
             Route::patch('/{id}', [EmployeeController::class, 'update']);
             Route::delete('/{id}', [EmployeeController::class, 'destroy']);
-            Route::get('/trashed', [EmployeeController::class, 'getTrashed']);
+            Route::post('/trashed', [EmployeeController::class, 'getTrashed']);
             Route::patch('/{id}/restore', [EmployeeController::class, 'restore']);
             Route::delete('/{id}/force', [EmployeeController::class, 'forceDelete']);
             Route::get('/status/{status}', [EmployeeController::class, 'getByStatus']);
@@ -365,6 +416,7 @@ Route::prefix('v1')->group(function () {
             Route::post('/{id}/documents', [EmployeeController::class, 'addDocument']);
             Route::delete('/{id}/documents/{docId}', [EmployeeController::class, 'deleteDocument']);
             Route::post('/bulk', [EmployeeController::class, 'bulkCreate']);
+            Route::post('/basic/store-update',[EmployeeController::class, 'storeOrUpdateBasic']);
         });
 
         Route::prefix('attendance')->group(function () {
@@ -379,6 +431,14 @@ Route::prefix('v1')->group(function () {
             Route::get('/get-attendance/{employee_id}/{date}', [AttendanceController::class, 'getEmployeeAttendance']);
             Route::put('/approve-or-reject-employee-attendance-change-request/{Id}', [AttendanceController::class, 'approveAttendanceChange']);
             Route::get('/manual-change-requests', [AttendanceController::class, 'getAttendancechangeRequests']);
+
+            Route::post('/manual', [AttendanceController::class, 'manualAttendance']);
+
+            Route::post('/break-start', [AttendanceController::class, 'breakStart']);
+            Route::post('/break-end', [AttendanceController::class, 'breakEnd']);
+            Route::post('/manual-break', [AttendanceController::class, 'manualBreak']);
+
+
 
             // Extra work on holiday
             Route::post('/work-on-holiday', [AttendanceController::class, 'RequestWorkOnHoliday']);
@@ -666,6 +726,31 @@ Route::prefix('v1')->group(function () {
         // Module APIs
 Route::get('modules', [ModuleController::class, 'index']);
 Route::get('modules/{id}/pages', [ModuleController::class, 'pages']);
+
+
+
+Route::prefix('questions')->group(function () {
+    Route::post('/', [InterviewQuestionController::class, 'store']);
+    Route::get('/', [InterviewQuestionController::class, 'index']);
+    Route::put('/{id}', [InterviewQuestionController::class, 'update']);
+    Route::delete('/{id}', [InterviewQuestionController::class, 'destroy']);
+});
+
+Route::prefix('answers')->group(function () {
+
+    Route::post('/', [ApplicantAnswerController::class, 'store']);
+    Route::get('/', [ApplicantAnswerController::class, 'index']);
+
+    Route::get('/applicant/{id}', [ApplicantAnswerController::class, 'getByApplicant']); // ✅ filter
+
+    Route::put('/rating/{id}', [ApplicantAnswerController::class, 'updateRating']);
+
+    Route::get('/average/{id}', [ApplicantAnswerController::class, 'getAverageRating']); // ✅ avg
+
+    Route::delete('/{id}', [ApplicantAnswerController::class, 'destroy']);
+});
+
+
     });
 
 });
