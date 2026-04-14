@@ -18,6 +18,9 @@ class RosterController extends Controller
         if ($request->employee_id) $query->where('employee_id', $request->employee_id);
         if ($request->roster_date) $query->where('roster_date', $request->roster_date);
         if ($request->shift_id) $query->where('shift_id', $request->shift_id);
+        if ($request->start_date && $request->end_date) {
+        $query->whereBetween('roster_date', [$request->start_date, $request->end_date]);
+      }
         $rosters = $query->orderBy('roster_date')->get();
         return response()->json(['success' => true, 'data' => $rosters], 200);
     }
