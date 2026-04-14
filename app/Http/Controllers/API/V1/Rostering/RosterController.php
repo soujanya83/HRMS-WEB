@@ -7,6 +7,8 @@ use App\Models\Rostering\Roster;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 use App\Models\Rostering\RosterPeriod;
+use App\Models\HolidayModel;
+
 
 class RosterController extends Controller
 {
@@ -23,6 +25,57 @@ class RosterController extends Controller
       }
         $rosters = $query->orderBy('roster_date')->get();
         return response()->json(['success' => true, 'data' => $rosters], 200);
+    }
+
+    public function getTodayShift(Request $request)
+    {
+        try {
+            $request->validate([
+                'employee_id' => 'required|integer'
+            ]);
+
+            $today = now()->toDateString();
+
+            // ✅ Get today's roster
+            $roster = \App\Models\Rostering\Roster::where('employee_id', $request->employee_id)
+                ->where('roster_date', $today)
+                ->first();
+
+            if (!$roster) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'No roster found for today'
+                ], 404);
+            }
+
+            // ✅ Get shift details
+            $shift = \App\Models\Rostering\Shift::where('id', $roster->shift_id)
+                ->select('name', 'start_time', 'end_time', 'color_code')
+                ->first();
+
+            if (!$shift) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Shift not found'
+                ], 404);
+            }
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Today shift fetched successfully',
+                'data' => [
+                    'date' => $today,
+                    'shift' => $shift
+                ]
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Something went wrong',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     // Create roster entry

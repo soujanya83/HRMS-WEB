@@ -573,6 +573,7 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
 
         Route::prefix('rosters')->group(function () {
             Route::get('/', [RosterController::class, 'index']);
+            Route::get('today-shifts', [RosterController::class, 'getTodayShift']);
             Route::post('/', [RosterController::class, 'store']);
             Route::get('/{id}', [RosterController::class, 'show']);
             Route::put('/{id}', [RosterController::class, 'update']);
