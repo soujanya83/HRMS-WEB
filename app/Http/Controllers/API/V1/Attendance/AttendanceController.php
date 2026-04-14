@@ -25,6 +25,8 @@ use App\Models\XeroTimesheet;
 use Illuminate\Support\Facades\Http;
 use App\Http\Controllers\API\V1\Employee\TimesheetController;
 use App\Models\Payrolls;
+use Illuminate\Support\Facades\DB;
+use Carbon\CarbonPeriod;
 
 class AttendanceController extends Controller
 {
