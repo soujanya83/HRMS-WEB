@@ -438,6 +438,8 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
             Route::post('/break-end', [AttendanceController::class, 'breakEnd']);
             Route::post('/manual-break', [AttendanceController::class, 'manualBreak']);
 
+            Route::get('weekly-attendance', [AttendanceController::class, 'weeklyAttendance']);
+
 
 
             // Extra work on holiday

@@ -2292,5 +2292,85 @@ public function manualBreak(Request $request): JsonResponse
 
 
 
+public function weeklyAttendance(Request $request): JsonResponse
+{
+    try {
+
+        /* ============================
+         | 1. VALIDATION
+         ============================ */
+        $validated = $request->validate([
+            'employee_id' => ['required', 'exists:employees,id'],
+            'date' => ['nullable', 'date'], // optional (for custom week)
+        ]);
+
+        $employeeId = $validated['employee_id'];
+
+        // If date not provided → use today
+        $baseDate = isset($validated['date'])
+            ? Carbon::parse($validated['date'])
+            : now();
+
+        // Week start (Monday) & end (Sunday)
+        $startOfWeek = $baseDate->copy()->startOfWeek(Carbon::MONDAY);
+        $endOfWeek   = $baseDate->copy()->endOfWeek(Carbon::SUNDAY);
+
+        // If current week → restrict till today
+        $today = now()->toDateString();
+        if ($baseDate->isCurrentWeek()) {
+            $endOfWeek = Carbon::parse($today);
+        }
+
+        /* ============================
+         | 2. FETCH ATTENDANCE
+         ============================ */
+        $attendances = Attendance::where('employee_id', $employeeId)
+            ->whereBetween('date', [
+                $startOfWeek->toDateString(),
+                $endOfWeek->toDateString()
+            ])
+            ->get()
+            ->keyBy('date');
+
+        /* ============================
+         | 3. PREPARE WEEK DATA
+         ============================ */
+        $weekData = [];
+
+        $period = CarbonPeriod::create($startOfWeek, $endOfWeek);
+
+        foreach ($period as $date) {
+            $dayName = $date->format('D'); // Mon, Tue
+
+            $attendance = $attendances[$date->toDateString()] ?? null;
+
+            $weekData[] = [
+                'date' => $date->toDateString(),
+                'day'  => $dayName,
+                'total_work_hours' => $attendance->total_work_hours ?? 0
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Weekly attendance fetched successfully',
+            'data' => [
+                'week_start' => $startOfWeek->toDateString(),
+                'week_end'   => $endOfWeek->toDateString(),
+                'days'       => $weekData
+            ]
+        ]);
+
+    } catch (\Exception $e) {
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Something went wrong',
+            'error'   => $e->getMessage()
+        ], 500);
+    }
+}
+
+
 
 }
