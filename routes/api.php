@@ -186,6 +186,7 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
         Route::apiResource('organization-attendance-rule', OrganizationAttendanceRuleController::class);
         Route::get('getbyorganization/{id}', [OrganizationAttendanceRuleController::class, 'getByOrganization']);
         Route::apiResource('organization-holiday', HolidayController::class);
+        Route::get('/upcoming-holidays', [HolidayController::class, 'upcomingHolidays']);
         Route::apiResource('organization-project', ProjectController::class);
         Route::apiResource('organization/employee/tasks', TaskController::class);
         Route::apiResource('organization/employee/timesheet', TimesheetController::class);
