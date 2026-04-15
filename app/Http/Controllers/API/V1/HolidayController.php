@@ -11,25 +11,33 @@ use Illuminate\Http\JsonResponse;
 
 class HolidayController extends Controller
 {
-       public function index(): JsonResponse
-    {
-        try {
-            $userId = Auth::id();
-            $employee = Employee::where('user_id', $userId)->first();
+      public function index(Request $request): JsonResponse
+{
+    try {
 
-            if (!$employee) {
-                return response()->json(['status' => false, 'message' => 'Employee not found.'], 404);
-            }
+        // ✅ Validate organization_id from query
+        $validated = $request->validate([
+            'organization_id' => ['required', 'exists:organizations,id']
+        ]);
 
-            $holidays = HolidayModel::where('organization_id', $employee->organization_id)
-                ->orderBy('holiday_date', 'asc')
-                ->get();
+        // ✅ Fetch holidays based on organization_id
+        $holidays = HolidayModel::where('organization_id', $validated['organization_id'])
+            ->orderBy('holiday_date', 'asc')
+            ->get();
 
-            return response()->json(['status' => true, 'data' => $holidays]);
-        } catch (\Exception $e) {
-            return response()->json(['status' => false, 'message' => 'Failed to fetch holidays.', 'error' => $e->getMessage()], 500);
-        }
+        return response()->json([
+            'status' => true,
+            'data' => $holidays
+        ], 200);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'status' => false,
+            'message' => 'Failed to fetch holidays.',
+            'error' => $e->getMessage()
+        ], 500);
     }
+}
 
     /**
      * Store a newly created holiday.
@@ -190,4 +198,42 @@ class HolidayController extends Controller
             return response()->json(['status' => false, 'message' => 'Failed to delete holiday.', 'error' => $e->getMessage()], 500);
         }
     }
+
+
+    public function upcomingHolidays(Request $request): JsonResponse
+{
+    try {
+
+        /* ============================
+         | 1. VALIDATION
+         ============================ */
+        $validated = $request->validate([
+            'organization_id' => ['required', 'exists:organizations,id']
+        ]);
+
+        $today = now()->toDateString();
+
+        /* ============================
+         | 2. FETCH UPCOMING HOLIDAYS
+         ============================ */
+        $holidays = HolidayModel::where('organization_id', $validated['organization_id'])
+            ->whereDate('holiday_date', '>=', $today) // only future + today
+            ->orderBy('holiday_date', 'asc')
+            ->limit(5)
+            ->get();
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Upcoming holidays fetched successfully',
+            'data' => $holidays
+        ], 200);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'status' => false,
+            'message' => 'Failed to fetch upcoming holidays',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
 }

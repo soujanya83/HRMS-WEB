@@ -186,6 +186,7 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
         Route::apiResource('organization-attendance-rule', OrganizationAttendanceRuleController::class);
         Route::get('getbyorganization/{id}', [OrganizationAttendanceRuleController::class, 'getByOrganization']);
         Route::apiResource('organization-holiday', HolidayController::class);
+        Route::get('/upcoming-holidays', [HolidayController::class, 'upcomingHolidays']);
         Route::apiResource('organization-project', ProjectController::class);
         Route::apiResource('organization/employee/tasks', TaskController::class);
         Route::apiResource('organization/employee/timesheet', TimesheetController::class);
@@ -438,6 +439,8 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
             Route::post('/break-end', [AttendanceController::class, 'breakEnd']);
             Route::post('/manual-break', [AttendanceController::class, 'manualBreak']);
 
+            Route::get('weekly-attendance', [AttendanceController::class, 'weeklyAttendance']);
+
 
 
             // Extra work on holiday
@@ -573,6 +576,7 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
 
         Route::prefix('rosters')->group(function () {
             Route::get('/', [RosterController::class, 'index']);
+            Route::get('today-shifts', [RosterController::class, 'getTodayShift']);
             Route::post('/', [RosterController::class, 'store']);
             Route::get('/{id}', [RosterController::class, 'show']);
             Route::put('/{id}', [RosterController::class, 'update']);
