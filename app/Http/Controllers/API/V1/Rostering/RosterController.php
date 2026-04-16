@@ -232,72 +232,72 @@ class RosterController extends Controller
 
 
     public function bulkAssign(Request $request)
-        {
-            $validated = $request->validate([
-                'roster_period_id' => 'required|exists:roster_periods,id',
-                'employee_ids' => 'required|array|min:1',
-                'employee_ids.*' => 'exists:employees,id',
-                'shift_id' => 'required|exists:shifts,id',
-             //   'start_time' => 'required|date_format:H:i',
-               // 'end_time' => 'required|date_format:H:i|after:start_time',
-                'created_by' => 'required|exists:users,id',
-            ]);
+    {
+        $validated = $request->validate([
+            'roster_period_id' => 'required|exists:roster_periods,id',
+            'employee_ids' => 'required|array|min:1',
+            'employee_ids.*' => 'exists:employees,id',
+            'shift_id' => 'required|exists:shifts,id',
+            //   'start_time' => 'required|date_format:H:i',
+            // 'end_time' => 'required|date_format:H:i|after:start_time',
+            'created_by' => 'required|exists:users,id',
+        ]);
 
-            $period = RosterPeriod::findOrFail($validated['roster_period_id']);
+        $period = RosterPeriod::findOrFail($validated['roster_period_id']);
 
-            if ($period->status === 'locked') {
-                return response()->json(['error' => 'Roster period is locked'], 403);
-            }
+        if ($period->status === 'locked') {
+            return response()->json(['error' => 'Roster period is locked'], 403);
+        }
 
-            $created = [];
-            $holidayDates = \App\Models\HolidayModel::where('organization_id', $period->organization_id)
-                ->where('is_active', true)
-                ->pluck('holiday_date')
-                ->map(function ($d) { return Carbon::parse($d)->toDateString(); })
-                ->toArray();
+        $created = [];
+        $holidayDates = \App\Models\HolidayModel::where('organization_id', $period->organization_id)
+            ->where('is_active', true)
+            ->pluck('holiday_date')
+            ->map(function ($d) { return Carbon::parse($d)->toDateString(); })
+            ->toArray();
 
-            foreach ($validated['employee_ids'] as $employeeId) {
-                for ($date = Carbon::parse($period->start_date);
-                    $date->lte($period->end_date);
-                    $date->addDay()) {
-                    $dayOfWeek = $date->dayOfWeek;
-                    $dateStr = $date->toDateString();
-                    // Skip Saturday (6), Sunday (0), and holidays
-                    if ($dayOfWeek === Carbon::SUNDAY || $dayOfWeek === Carbon::SATURDAY || in_array($dateStr, $holidayDates)) {
-                        continue;
-                    }
-                    if (
-                        Roster::where('employee_id', $employeeId)
-                            ->where('roster_date', $dateStr)
-                            ->exists()
-                    ) continue;
-                    $created[] = Roster::create([
-                        'organization_id' => $period->organization_id,
-                        'roster_period_id' => $period->id,
-                        'employee_id' => $employeeId,
-                        'shift_id' => $validated['shift_id'],
-                        'roster_date' => $dateStr,
-                        'created_by' => $validated['created_by'],
-                    ]);
+        foreach ($validated['employee_ids'] as $employeeId) {
+            for ($date = Carbon::parse($period->start_date);
+                $date->lte($period->end_date);
+                $date->addDay()) {
+                $dayOfWeek = $date->dayOfWeek;
+                $dateStr = $date->toDateString();
+                // Skip Saturday (6), Sunday (0), and holidays
+                if ($dayOfWeek === Carbon::SUNDAY || $dayOfWeek === Carbon::SATURDAY || in_array($dateStr, $holidayDates)) {
+                    continue;
                 }
+                if (
+                    Roster::where('employee_id', $employeeId)
+                        ->where('roster_date', $dateStr)
+                        ->exists()
+                ) continue;
+                $created[] = Roster::create([
+                    'organization_id' => $period->organization_id,
+                    'roster_period_id' => $period->id,
+                    'employee_id' => $employeeId,
+                    'shift_id' => $validated['shift_id'],
+                    'roster_date' => $dateStr,
+                    'created_by' => $validated['created_by'],
+                ]);
             }
-
-            return response()->json([
-                'success' => true,
-                'count' => count($created),
-                'data' => $created
-            ], 201);
         }
 
-        public function byPeriod($periodId)
-        {
-            $rosters = Roster::with(['employee', 'shift'])
-                ->where('roster_period_id', $periodId)
-                ->orderBy('roster_date')
-                ->get();
+        return response()->json([
+            'success' => true,
+            'count' => count($created),
+            'data' => $created
+        ], 201);
+    }
 
-            return response()->json(['success' => true, 'data' => $rosters]);
-        }
+    public function byPeriod($periodId)
+    {
+        $rosters = Roster::with(['employee', 'shift'])
+            ->where('roster_period_id', $periodId)
+            ->orderBy('roster_date')
+            ->get();
+
+        return response()->json(['success' => true, 'data' => $rosters]);
+    }
 
 
 }
