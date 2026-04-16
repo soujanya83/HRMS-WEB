@@ -668,6 +668,7 @@ public function pushApprovedForEmployee(Request $request)
             'org_id' => $orgId,
             'count' => $payPeriods->count()
         ]);
+        return response()->json([
             'status' => true,
             'data' => $payPeriods,
             'message' => 'Pay periods synced and retrieved successfully'
