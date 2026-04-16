@@ -94,7 +94,8 @@ class HolidayController extends Controller
     public function store(Request $request): JsonResponse
     {
         try {
-            $userId = Auth::id();
+            $user = Auth::user();
+            $userId = $user->id;
             $validated = $request->validate([
                 'organization_id' => ['required', 'exists:organizations,id'],
                 'holiday_name' => 'required|string|max:255',
@@ -104,6 +105,7 @@ class HolidayController extends Controller
                 'is_active' => 'boolean',
                 'description' => 'nullable|string',
             ]);
+
 
             $state = $request->header('X-State-Code') ?? session('state_code');
             if (!$state) {
