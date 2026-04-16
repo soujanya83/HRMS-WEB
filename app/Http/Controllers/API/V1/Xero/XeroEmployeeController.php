@@ -629,29 +629,45 @@ public function pushApprovedForEmployee(Request $request)
 
  public function get_all_pay_periods(Request $request)
     {
+        Log::info('Get All Pay Periods Started', [
+            'organization_id' => $request->organization_id
+        ]);
+
         $request->validate([
             'organization_id' => 'required'
         ]);
 
         $orgId = $request->organization_id;
+        Log::info('Pay Periods request validated', ['org_id' => $orgId]);
 
         // 1. 🔄 Sync Logic: Fetch from Xero, Calculate, Update DB
+        Log::info('Initiating sync with Xero PayrollCalendars', ['org_id' => $orgId]);
         $syncResult = $this->syncXeroPayPeriods($orgId);
 
         if (!$syncResult['success']) {
+            Log::error('Sync failed', [
+                'org_id' => $orgId,
+                'message' => $syncResult['message']
+            ]);
             return response()->json([
                 'status' => false, 
                 'message' => $syncResult['message']
             ], $syncResult['code']);
         }
 
+        Log::info('Sync completed successfully', ['org_id' => $orgId]);
+
         // 2. 📦 Fetch Logic: Get the fresh data from Database
+        Log::info('Fetching pay periods from database', ['org_id' => $orgId]);
         $payPeriods = PayPeriod::where('organization_id', $orgId)
             ->orderBy('calendar_name')     // Group by Calendar Name
             ->orderBy('start_date', 'desc') // Latest dates first
             ->get();
 
-        return response()->json([
+        Log::info('Pay periods retrieved from database', [
+            'org_id' => $orgId,
+            'count' => $payPeriods->count()
+        ]);
             'status' => true,
             'data' => $payPeriods,
             'message' => 'Pay periods synced and retrieved successfully'
@@ -663,19 +679,32 @@ public function pushApprovedForEmployee(Request $request)
      */
     private function syncXeroPayPeriods($orgId)
     {
+        Log::info('syncXeroPayPeriods: Starting process', ['org_id' => $orgId]);
+
         // A. Connection Setup
+        Log::info('syncXeroPayPeriods: Looking up Xero connection', ['org_id' => $orgId]);
         $connection = XeroConnection::where('organization_id', $orgId)
             ->where('is_active', 1)
             ->first();
 
         if (!$connection) {
+            Log::warning('syncXeroPayPeriods: No active Xero connection found', ['org_id' => $orgId]);
             return ['success' => false, 'message' => 'Xero not connected', 'code' => 404];
         }
 
+        Log::info('syncXeroPayPeriods: Active connection found', [
+            'org_id' => $orgId,
+            'connection_id' => $connection->id,
+            'tenant_id' => $connection->tenant_id
+        ]);
+
+        Log::info('syncXeroPayPeriods: Refreshing token if needed', ['org_id' => $orgId]);
         $connection = app(\App\Services\Xero\XeroTokenService::class)->refreshIfNeeded($connection);
+        Log::info('syncXeroPayPeriods: Token refreshed', ['org_id' => $orgId]);
 
         try {
             // B. Fetch Calendars from Xero
+            Log::info('syncXeroPayPeriods: Making API call to fetch PayrollCalendars', ['org_id' => $orgId]);
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $connection->access_token,
                 'Xero-Tenant-Id' => $connection->tenant_id,
@@ -683,50 +712,116 @@ public function pushApprovedForEmployee(Request $request)
             ])->get('https://api.xero.com/payroll.xro/1.0/PayrollCalendars');
 
             if (!$response->successful()) {
+                Log::error('syncXeroPayPeriods: API call failed', [
+                    'org_id' => $orgId,
+                    'status' => $response->status(),
+                    'response' => $response->body()
+                ]);
                 return ['success' => false, 'message' => 'Failed to fetch calendars from Xero', 'code' => 500];
             }
 
+            Log::info('syncXeroPayPeriods: API call successful', ['org_id' => $orgId]);
+
             $calendars = $response->json()['PayrollCalendars'] ?? [];
+            Log::info('syncXeroPayPeriods: Calendars retrieved', [
+                'org_id' => $orgId,
+                'calendar_count' => count($calendars)
+            ]);
+
             $allPayPeriods = [];
             $today = Carbon::now();
 
             // C. Loop & Calculate Dates
+            Log::info('syncXeroPayPeriods: Starting calendar loop', ['org_id' => $orgId]);
             foreach ($calendars as $calendar) {
+                Log::debug('syncXeroPayPeriods: Processing calendar', [
+                    'org_id' => $orgId,
+                    'calendar_name' => $calendar['Name'] ?? 'Unknown',
+                    'calendar_type' => $calendar['CalendarType'] ?? 'Unknown'
+                ]);
+
                 $xeroStartDate = $this->parseXeroDate($calendar['StartDate'] ?? null);
-                if (!$xeroStartDate) continue;
+                if (!$xeroStartDate) {
+                    Log::warning('syncXeroPayPeriods: Could not parse start date', [
+                        'org_id' => $orgId,
+                        'calendar_name' => $calendar['Name'] ?? 'Unknown'
+                    ]);
+                    continue;
+                }
 
                 $type = strtoupper($calendar['CalendarType'] ?? '');
                 $name = $calendar['Name'] ?? 'Unknown';
-                $calendarId = $calendar['PayrollCalendarID']; // 👈 1. ID Fetch की
+                $calendarId = $calendar['PayrollCalendarID'];
+
+                Log::debug('syncXeroPayPeriods: Finding current period', [
+                    'org_id' => $orgId,
+                    'calendar_name' => $name,
+                    'calendar_type' => $type
+                ]);
 
                 // 1. Find Current Period
                 $currentPeriod = $this->findCurrentPeriod($xeroStartDate, $type, $today);
 
                 if ($currentPeriod) {
+                    Log::debug('syncXeroPayPeriods: Current period found', [
+                        'org_id' => $orgId,
+                        'calendar_name' => $name,
+                        'start_date' => $currentPeriod['start']->toDateString(),
+                        'end_date' => $currentPeriod['end']->toDateString()
+                    ]);
+
                     // Current
                     $allPayPeriods[] = $this->formatPeriod($currentPeriod,  $name, $type, $calendarId, true, 'Current');
+                    Log::debug('syncXeroPayPeriods: Added current period', ['org_id' => $orgId, 'calendar_name' => $name]);
 
                     // Future (Next 1)
                     $nextPeriod = $this->calculateNextPeriod($currentPeriod['start'], $type);
                     $allPayPeriods[] = $this->formatPeriod($nextPeriod, $name,  $type, $calendarId, false, 'Future');
+                    Log::debug('syncXeroPayPeriods: Added future period', ['org_id' => $orgId, 'calendar_name' => $name]);
 
                     // Past (Last 3)
                     $tempStart = $currentPeriod['start'];
                     for ($i = 1; $i <= 3; $i++) {
                         $pastPeriod = $this->calculatePreviousPeriod($tempStart, $type);
                         $allPayPeriods[] = $this->formatPeriod($pastPeriod, $name, $type, $calendarId, false, 'Past');
+                        Log::debug('syncXeroPayPeriods: Added past period', [
+                            'org_id' => $orgId,
+                            'calendar_name' => $name,
+                            'past_index' => $i
+                        ]);
                         $tempStart = $pastPeriod['start'];
                     }
+                } else {
+                    Log::warning('syncXeroPayPeriods: Could not find current period', [
+                        'org_id' => $orgId,
+                        'calendar_name' => $name,
+                        'calendar_type' => $type
+                    ]);
                 }
             }
 
+            Log::info('syncXeroPayPeriods: Calendar loop completed', [
+                'org_id' => $orgId,
+                'total_periods_calculated' => count($allPayPeriods)
+            ]);
+
             // D. Sync to Database
+            Log::info('syncXeroPayPeriods: Starting database sync', [
+                'org_id' => $orgId,
+                'periods_to_sync' => count($allPayPeriods)
+            ]);
             $this->storePeriodsInDatabase($orgId, $allPayPeriods);
+            Log::info('syncXeroPayPeriods: Database sync completed', ['org_id' => $orgId]);
 
             return ['success' => true];
 
         } catch (\Exception $e) {
-            Log::error('Payroll Sync Error', ['msg' => $e->getMessage()]);
+            Log::error('syncXeroPayPeriods: Exception occurred', [
+                'org_id' => $orgId,
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
             return ['success' => false, 'message' => 'Internal Error: ' . $e->getMessage(), 'code' => 500];
         }
     }
@@ -736,34 +831,97 @@ public function pushApprovedForEmployee(Request $request)
     // ------------------------------------------------------------------
     private function storePeriodsInDatabase($orgId, array $periods)
     {
+        Log::info('storePeriodsInDatabase: Starting database storage', [
+            'org_id' => $orgId,
+            'periods_count' => count($periods)
+        ]);
+
         // 1. Identify valid Start Dates & Calendars we just found
+        Log::info('storePeriodsInDatabase: Identifying active periods', ['org_id' => $orgId]);
         $activeStartDates = array_column($periods, 'start_date');
         $activeCalendarNames = array_unique(array_column($periods, 'calendar_name'));
 
+        Log::info('storePeriodsInDatabase: Active period dates and calendars identified', [
+            'org_id' => $orgId,
+            'unique_start_dates' => count($activeStartDates),
+            'unique_calendars' => count($activeCalendarNames),
+            'calendars' => $activeCalendarNames
+        ]);
+
         // 2. Delete "Stale" Data (Older than 3 past periods)
         // Only delete for the calendars we are currently processing
-        PayPeriod::where('organization_id', $orgId)
+        Log::info('storePeriodsInDatabase: Deleting stale pay periods', [
+            'org_id' => $orgId,
+            'calendars_to_process' => $activeCalendarNames
+        ]);
+
+        $deletedCount = PayPeriod::where('organization_id', $orgId)
             ->whereIn('calendar_name', $activeCalendarNames)
             ->whereNotIn('start_date', $activeStartDates)
             ->delete();
 
+        Log::info('storePeriodsInDatabase: Stale periods deleted', [
+            'org_id' => $orgId,
+            'deleted_count' => $deletedCount
+        ]);
+
         // 3. Update/Create Valid Periods
+        Log::info('storePeriodsInDatabase: Starting update/create loop', [
+            'org_id' => $orgId,
+            'periods_to_process' => count($periods)
+        ]);
+
+        $createdCount = 0;
+        $updatedCount = 0;
+
         foreach ($periods as $period) {
-            PayPeriod::updateOrCreate(
+            Log::debug('storePeriodsInDatabase: Processing period', [
+                'org_id' => $orgId,
+                'calendar_name' => $period['calendar_name'],
+                'start_date' => $period['start_date'],
+                'end_date' => $period['end_date'],
+                'is_current' => $period['is_current']
+            ]);
+
+            $result = PayPeriod::updateOrCreate(
                 [
                     'organization_id' => $orgId,
                     'calendar_name'   => $period['calendar_name'],
                     'start_date'      => $period['start_date'],
                 ],
                 [
-                    'calendar_id'     => $period['calendar_id'], // 👈 THIS WAS MISSING
+                    'calendar_id'     => $period['calendar_id'],
                     'calendar_type'   => $period['calendar_type'],
                     'end_date'        => $period['end_date'],
                     'number_of_days'  => $period['number_of_days'],
                     'is_current'      => $period['is_current'],
                 ]
             );
+
+            if ($result->wasRecentlyCreated) {
+                $createdCount++;
+                Log::debug('storePeriodsInDatabase: Period created', [
+                    'org_id' => $orgId,
+                    'calendar_name' => $period['calendar_name'],
+                    'start_date' => $period['start_date']
+                ]);
+            } else {
+                $updatedCount++;
+                Log::debug('storePeriodsInDatabase: Period updated', [
+                    'org_id' => $orgId,
+                    'calendar_name' => $period['calendar_name'],
+                    'start_date' => $period['start_date']
+                ]);
+            }
         }
+
+        Log::info('storePeriodsInDatabase: Update/create loop completed', [
+            'org_id' => $orgId,
+            'created_count' => $createdCount,
+            'updated_count' => $updatedCount,
+            'total_processed' => count($periods),
+            'deleted_count' => $deletedCount
+        ]);
     }
 
 
