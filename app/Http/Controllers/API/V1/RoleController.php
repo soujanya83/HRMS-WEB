@@ -8,9 +8,32 @@ use Spatie\Permission\Models\Role;
 
 class RoleController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json(Role::all());
+        try {
+
+            // ✅ Validate organization_id (optional or required as per your need)
+            $validated = $request->validate([
+                'organization_id' => ['required', 'exists:organizations,id']
+            ]);
+
+            // ✅ Fetch roles
+            $roles = Role::where('organization_id', $validated['organization_id'])
+                ->where('name', '!=', 'superadmin') // exclude superadmin
+                ->get();
+
+            return response()->json([
+                'status' => true,
+                'data'   => $roles
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Failed to fetch roles',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     public function store(Request $request)
