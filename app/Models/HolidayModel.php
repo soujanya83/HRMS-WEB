@@ -22,6 +22,7 @@ class HolidayModel extends Model
         'organization_id',
         'holiday_name',
         'holiday_date',
+        'state_code', // State code for the holiday (e.g., NSW, VIC)
         'holiday_type',
         'is_recurring',
         'description',
@@ -39,10 +40,10 @@ class HolidayModel extends Model
         return $this->belongsTo(Organization::class, 'organization_id');
     }
 
-    // Created by a specific employee
+    // Created by a specific user
     public function creator()
     {
-        return $this->belongsTo(Employee::class, 'created_by');
+        return $this->belongsTo(\App\Models\User::class, 'created_by');
     }
 
     /**

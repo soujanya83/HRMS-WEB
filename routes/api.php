@@ -185,6 +185,9 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
         Route::apiResource('organization-leaves', OrganizationLeaveController::class);
         Route::apiResource('organization-attendance-rule', OrganizationAttendanceRuleController::class);
         Route::get('getbyorganization/{id}', [OrganizationAttendanceRuleController::class, 'getByOrganization']);
+        Route::get('/holiday/australian-states', [HolidayController::class, 'getAustralianStates']);
+        Route::post('/holiday/set-state', [HolidayController::class, 'setState']);
+        Route::post('/holiday/get-holidays', [HolidayController::class, 'getHolidays']);
         Route::apiResource('organization-holiday', HolidayController::class);
         Route::get('/upcoming-holidays', [HolidayController::class, 'upcomingHolidays']);
         Route::apiResource('organization-project', ProjectController::class);
