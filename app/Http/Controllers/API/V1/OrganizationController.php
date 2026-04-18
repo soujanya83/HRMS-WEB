@@ -115,7 +115,6 @@ public function store(StoreOrganizationRequest $request)
 
         if (!$user) {
 
-            // name from email before @
             $name = explode('@', $email)[0];
 
             $user = User::create([
@@ -130,11 +129,16 @@ public function store(StoreOrganizationRequest $request)
         // CREATE ORGANIZATION
         // ===============================
         $orgData = array_merge($validated, [
-            'user_id'    => $user->id,        // created/existing user id
-            'created_by' => $authUser->id     // auth user id
+            'user_id'    => $user->id,
+            'created_by' => $authUser->id
         ]);
 
         $organization = Organization::create($orgData);
+
+        // ===============================
+        // ✅ ASSIGN ROLE (Center Admin)
+        // ===============================
+        $user->assignRoleForOrganization('Center Admin', $organization->id);
 
         DB::commit();
 
@@ -143,7 +147,8 @@ public function store(StoreOrganizationRequest $request)
             'message' => 'Organization created successfully',
             'data' => [
                 'organization' => $organization,
-                'user' => $user
+                'user' => $user,
+                'role_assigned' => 'Center Admin'
             ]
         ], 201);
 
