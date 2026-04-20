@@ -945,38 +945,36 @@ public function employeesDataForAssignedRoles(Request $request): JsonResponse
          | 1. VALIDATION
          ============================ */
         $validated = $request->validate([
-            'organization_id' => ['required', 'exists:organizations,id']
+            'organization_id' => ['required', 'exists:organizations,id'],
+            'per_page' => ['nullable', 'integer', 'min:1'], // optional
         ]);
 
+        $perPage = $request->per_page ?? 10; // default 10
+
         /* ============================
-         | 2. FETCH DATA USING JOINS
+         | 2. FETCH DATA WITH PAGINATION
          ============================ */
         $data = DB::table('user_organization_roles as uor')
             ->join('users as u', 'uor.user_id', '=', 'u.id')
             ->join('roles as r', 'uor.role_id', '=', 'r.id')
             
-            // left join because employee may or may not exist
             ->leftJoin('employees as e', 'u.id', '=', 'e.user_id')
             ->leftJoin('departments as d', 'e.department_id', '=', 'd.id')
 
             ->where('uor.organization_id', $validated['organization_id'])
-
-            // ❌ exclude superadmin & centers
             ->whereNotIn('uor.role_id', [1, 25])
 
             ->select(
                 'u.id as user_id',
                 'u.name',
                 'u.email',
-
                 'r.name as role_name',
-
                 'e.id as employee_id',
                 'e.status',
-
                 'd.name as department_name'
             )
-            ->get();
+            ->orderBy('u.id', 'desc') // optional sorting
+            ->paginate($perPage);
 
         return response()->json([
             'success' => true,
