@@ -937,6 +937,63 @@ public function updateEmployeeProfile(Request $request)
 }
 
 
+public function employeesDataForAssignedRoles(Request $request): JsonResponse
+{
+    try {
+
+        /* ============================
+         | 1. VALIDATION
+         ============================ */
+        $validated = $request->validate([
+            'organization_id' => ['required', 'exists:organizations,id']
+        ]);
+
+        /* ============================
+         | 2. FETCH DATA USING JOINS
+         ============================ */
+        $data = DB::table('user_organization_roles as uor')
+            ->join('users as u', 'uor.user_id', '=', 'u.id')
+            ->join('roles as r', 'uor.role_id', '=', 'r.id')
+            
+            // left join because employee may or may not exist
+            ->leftJoin('employees as e', 'u.id', '=', 'e.user_id')
+            ->leftJoin('departments as d', 'e.department_id', '=', 'd.id')
+
+            ->where('uor.organization_id', $validated['organization_id'])
+
+            // ❌ exclude superadmin & centers
+            ->whereNotIn('uor.role_id', [1, 25])
+
+            ->select(
+                'u.id as user_id',
+                'u.name',
+                'u.email',
+
+                'r.name as role_name',
+
+                'e.id as employee_id',
+                'e.status',
+
+                'd.name as department_name'
+            )
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Employees data fetched successfully',
+            'data' => $data
+        ], 200);
+
+    } catch (\Exception $e) {
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to fetch data',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
+
 
 
 
