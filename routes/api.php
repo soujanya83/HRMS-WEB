@@ -131,7 +131,7 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
 
          Route::get('/xero/status', [XeroConnectionController::class, 'status']);
 
-         Route::get('employees-data', [EmployeeController::class, 'employeesData-for-assigned-roles']);
+         Route::get('employees-data', [EmployeeController::class, 'employeesDataForAssignedRoles']);
 
 
 
