@@ -48,10 +48,21 @@ class UserColorController extends Controller
             'background_color' => 'nullable|string|max:20',
         ]);
         $user = Auth::user();
-        $user->sidebar_color = $request->sidebar_color;
-        $user->background_color = $request->background_color;
+        $sidebar = $request->sidebar_color;
+        $background = $request->background_color;
+        $user->sidebar_color = $sidebar;
+        $user->background_color = $background;
         $user->save();
-        return response()->json(['message' => 'Colors updated successfully']);
+
+        if ($sidebar && !$background) {
+            return response()->json(['message' => 'Sidebar color changed']);
+        } elseif (!$sidebar && $background) {
+            return response()->json(['message' => 'Background color changed']);
+        } elseif ($sidebar && $background) {
+            return response()->json(['message' => 'Sidebar and background colors changed']);
+        } else {
+            return response()->json(['message' => 'No color selected']);
+        }
     }
 
     public function allColors()
