@@ -63,6 +63,7 @@ use App\Http\Controllers\API\V1\XeroLeaveApplicationController;
 use App\Http\Controllers\API\V1\EmployeeInvitesEmailcontroller;
 use App\Http\Controllers\API\V1\InterviewQuestionController;
 use App\Http\Controllers\API\V1\ApplicantAnswerController;
+use App\Http\Controllers\API\UserColorController;
 
 use App\Http\Controllers\API\V1\{
     RoleController,
@@ -81,6 +82,13 @@ use App\Http\Controllers\API\V1\{
 
 
 Route::prefix('v1')->group(function () {
+
+    // User color preferences (sidebar/background)
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('/user/getcolors', [\App\Http\Controllers\Api\UserColorController::class, 'getColors']);
+        Route::post('/user/setcolors', [\App\Http\Controllers\Api\UserColorController::class, 'setColors']);
+        Route::get('/user/allcolors', [\App\Http\Controllers\Api\UserColorController::class, 'allColors']);
+    });
 
     Route::post('/send-invite', [EmployeeInvitesEmailcontroller::class, 'sendInvite']);
     Route::post('/employee/update-profile', [EmployeeController::class, 'updateEmployeeProfile']);
