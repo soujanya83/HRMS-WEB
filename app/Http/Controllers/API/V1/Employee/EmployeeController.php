@@ -34,27 +34,66 @@ use Illuminate\Support\Facades\Crypt;
 
 class EmployeeController extends Controller
 {
-    public function index(): JsonResponse
-    {
-        try {
-            $employees = Employee::with([
-                'user',
-                'organization',
-                'department',
-                'designation',
-                'applicant',
-                'manager'
-            ])->orderBy('joining_date', 'desc')->get();
+   public function index(Request $request): JsonResponse
+{
+    try {
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Employees retrieved successfully',
-                'data' => $employees
-            ], 200);
-        } catch (Exception $e) {
-            return $this->serverError('Failed to retrieve employees', $e);
+        /* ============================
+         | 1. VALIDATION
+         ============================ */
+        $validated = $request->validate([
+            'organization_id' => ['required', 'exists:organizations,id'],
+            'status' => ['nullable', 'in:Active,On Probation,On Leave,Terminated'],
+            'department_id' => ['nullable', 'exists:departments,id'],
+            'per_page' => ['nullable', 'integer', 'min:1']
+        ]);
+
+        $perPage = $request->per_page ?? 10;
+
+        /* ============================
+         | 2. QUERY BUILDING
+         ============================ */
+        $query = Employee::with([
+            'user',
+            'organization',
+            'department',
+            'designation',
+            'applicant',
+            'manager'
+        ])
+        ->where('organization_id', $validated['organization_id']);
+
+        // ✅ Filter by status
+        if (!empty($validated['status'])) {
+            $query->where('status', $validated['status']);
         }
+
+        // ✅ Filter by department
+        if (!empty($validated['department_id'])) {
+            $query->where('department_id', $validated['department_id']);
+        }
+
+        /* ============================
+         | 3. PAGINATION
+         ============================ */
+        $employees = $query
+            ->orderBy('joining_date', 'desc')
+            ->paginate($perPage);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Employees retrieved successfully',
+            'data' => $employees
+        ], 200);
+
+    } catch (Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to retrieve employees',
+            'error' => $e->getMessage()
+        ], 500);
     }
+}
 
     public function show($id): JsonResponse
     {
