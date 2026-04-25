@@ -64,7 +64,7 @@ class EmployeeInvitesEmailcontroller extends Controller
 
         } else {
             // ✅ Create new user
-            $rawPassword = 12345678;
+            $rawPassword = rand(100000, 999999); // simple random password
 
             $user = User::create([
                 'name' => trim($request->name . ' ' . $request->last_name),
@@ -95,16 +95,18 @@ class EmployeeInvitesEmailcontroller extends Controller
         DB::commit();
 
         // ✅ Generate link with employee ID
-        $link = "https://chrispp.com/apply/" . $employee->id;
+        $link = "https://chrispp.com/login";
         $organization_name = Organization::find($organizationId)->name;
     
 
         // ✅ Email Data
         $data = [
             'name' => $request->name,
+            'password' => $rawPassword,
             'last_name' => $request->last_name,
             'organization_name' => $organization_name,
-            'link' => $link
+            'link' => $link,
+            'email' => $email // ✅ ADD THIS
         ];
 
         // ✅ Send Email

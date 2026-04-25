@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Employee Onboarding</title>
+    <title>Employee Login Details</title>
 </head>
 <body style="margin:0; padding:0; font-family: Arial, sans-serif; background-color:#f4f4f4;">
 
@@ -25,19 +25,38 @@
                             <h3>Hello {{ $data['name'] }} {{ $data['last_name'] }},</h3>
 
                             <p>
-                                We are excited to have you onboard! 🎉  
-                                Please complete your profile by submitting your details and documents.
+                                We are pleased to welcome you onboard! 🎉  
+                                Your employee account has been created successfully.
                             </p>
+
+                            <p>
+                                Please find your login credentials below:
+                            </p>
+
+                            <table width="100%" cellpadding="10" cellspacing="0" style="background:#f9f9f9; border-radius:5px; margin:20px 0;">
+                                <tr>
+                                    <td><strong>Email:</strong></td>
+                                    <td>{{ $data['email'] ?? 'Your registered email' }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Temporary Password:</strong></td>
+                                    <td>{{ $data['password'] }}</td>
+                                </tr>
+                            </table>
 
                             <p style="text-align:center; margin:30px 0;">
                                 <a href="{{ $data['link'] }}"
                                    style="background:#4CAF50; color:#fff; padding:12px 25px; text-decoration:none; border-radius:5px;">
-                                    Complete Your Profile
+                                    Login to Your Account
                                 </a>
                             </p>
 
                             <p>
-                                This link will help you upload certificates, personal details, and other required documents.
+                                For security reasons, we strongly recommend that you log in using the above credentials and change your password immediately after your first login.
+                            </p>
+
+                            <p>
+                                After logging in, please complete your profile by adding your personal details, certificates, and other required documents.
                             </p>
 
                             <p>If you have any questions, feel free to contact HR.</p>
