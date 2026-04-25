@@ -116,6 +116,8 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
     Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 
 
+    Route::middleware('auth:sanctum')->post('/change-password', [AuthController::class, 'changePassword']);
+
     // Profile Pin APIs
     Route::prefix('profile-pin')->group(function () {
         // Public endpoints

@@ -23,6 +23,7 @@ class User extends Authenticatable
         'is_organization',
         'reset_password_otp_expires_at',
         'reset_password_otp',
+        'temp_pass_status',
     ];
 
     protected $hidden = [
