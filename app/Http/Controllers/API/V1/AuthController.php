@@ -335,7 +335,7 @@ public function resetPassword(Request $request)
     {
         // ✅ Validation
         $validator = Validator::make($request->all(), [
-            'current_password' => 'required',
+            // 'current_password' => 'required',
             'new_password' => 'required|min:6|confirmed', 
             // expects new_password + new_password_confirmation
         ]);
@@ -357,26 +357,26 @@ public function resetPassword(Request $request)
         }
 
         // ✅ Check current password
-        if (!Hash::check($request->current_password, $user->password)) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Current password is incorrect'
-            ], 401);
-        }
+        // if (!Hash::check($request->current_password, $user->password)) {
+        //     return response()->json([
+        //         'status' => false,
+        //         'message' => 'Current password is incorrect'
+        //     ], 401);
+        // }
 
         // ❌ Prevent same password reuse
-        if (Hash::check($request->new_password, $user->password)) {
-            return response()->json([
-                'status' => false,
-                'message' => 'New password cannot be same as old password'
-            ], 400);
-        }
+        // if (Hash::check($request->new_password, $user->password)) {
+        //     return response()->json([
+        //         'status' => false,
+        //         'message' => 'New password cannot be same as old password'
+        //     ], 400);
+        // }
 
         // ✅ Update password
         $user->password = Hash::make($request->new_password);
 
         // 👉 OPTIONAL (Highly Recommended)
-        $user->temp_pass_status = 0; // mark password as updated
+        $user->temp_pass_status = 1; // mark password as updated
 
         $user->save();
 
