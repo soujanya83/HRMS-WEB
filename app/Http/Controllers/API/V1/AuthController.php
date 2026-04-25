@@ -128,11 +128,14 @@ class AuthController extends Controller
         // ✅ Token
         $token = $user->createToken("API Token")->plainTextToken;
 
+        $employee = Employee::where('user_id', $user->id)->first();
+
         return response()->json([
             "status"  => true,
             "message" => "Login successful",
             "data"    => [
                 "user"  => $user,
+                "employee" => $employee ?? null, // include employee data if exists
                 "roles" => $rolesData, // 👈 important
                 "token" => $token
             ]
