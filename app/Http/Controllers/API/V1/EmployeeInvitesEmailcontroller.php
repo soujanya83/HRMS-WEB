@@ -67,6 +67,7 @@ class EmployeeInvitesEmailcontroller extends Controller
 
         $employee = null;
         $createdUser = false;
+         $rawPassword = $this->generateStrongPassword(10); // simple random password
 
         if ($user) {
 
@@ -94,7 +95,7 @@ class EmployeeInvitesEmailcontroller extends Controller
 
         } else {
             // ✅ Create new user
-            $rawPassword = $this->generateStrongPassword(10); // simple random password
+           
 
             $user = User::create([
                 'name' => trim($request->name . ' ' . $request->last_name),
