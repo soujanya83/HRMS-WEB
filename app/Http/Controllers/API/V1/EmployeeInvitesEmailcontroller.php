@@ -126,7 +126,7 @@ class EmployeeInvitesEmailcontroller extends Controller
         DB::commit();
 
         // ✅ Generate link with employee ID
-        $link = "https://chrispp.com/login";
+        $link = "https://chrispp.au/login";
         $organization_name = Organization::find($organizationId)->name;
     
 
