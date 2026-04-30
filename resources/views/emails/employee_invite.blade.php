@@ -2,87 +2,88 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Employee Login Details</title>
+    <title>Welcome to {{ $data['organization_name'] }}</title>
 </head>
-<body style="margin:0; padding:0; font-family: Arial, sans-serif; background-color:#f4f4f4;">
+<body style="margin:0; padding:0; background-color:#f6f9fc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">
 
-    <table width="100%" cellpadding="0" cellspacing="0" style="padding:20px;">
-        <tr>
-            <td align="center">
+<table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 20px;">
+<tr>
+<td align="center">
 
-                <table width="600" style="background:#ffffff; border-radius:10px; overflow:hidden; box-shadow:0 0 10px rgba(0,0,0,0.1);">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,0.05);">
 
-                    <!-- Header -->
-                    <tr>
-                        <td style="background:#4CAF50; padding:20px; text-align:center; color:#ffffff;">
-                            <h2>Welcome to {{ $data['organization_name'] }} 🚀</h2>
-                        </td>
-                    </tr>
+    <!-- Header -->
+    <tr>
+        <td style="padding:30px; text-align:center; border-bottom:1px solid #eee;">
+            <h2 style="margin:0; color:#111;">Welcome to {{ $data['organization_name'] }} 👋</h2>
+        </td>
+    </tr>
 
-                    <!-- Body -->
-                    <tr>
-                        <td style="padding:30px; color:#333;">
-                            <h3>Hello {{ $data['name'] }} {{ $data['last_name'] }},</h3>
+    <!-- Body -->
+    <tr>
+        <td style="padding:35px; color:#444; font-size:15px; line-height:1.6;">
 
-                            <p>
-                                We are pleased to welcome you onboard! 🎉  
-                                Your employee account has been created successfully.
-                            </p>
+            <p>Hi <strong>{{ $data['name'] }} {{ $data['last_name'] }}</strong>,</p>
 
-                            <p>
-                                Please find your login credentials below:
-                            </p>
+            <p>
+                Your account has been successfully created. You can now access the platform using the credentials below.
+            </p>
 
-                            <table width="100%" cellpadding="10" cellspacing="0" style="background:#f9f9f9; border-radius:5px; margin:20px 0;">
-                                <tr>
-                                    <td><strong>Email:</strong></td>
-                                    <td>{{ $data['email'] ?? 'Your registered email' }}</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Temporary Password:</strong></td>
-                                    <td>{{ $data['password'] }}</td>
-                                </tr>
-                            </table>
+            <!-- Credentials Card -->
+            <table width="100%" cellpadding="12" cellspacing="0" style="background:#f8fafc; border-radius:8px; margin:25px 0;">
+                <tr>
+                    <td style="color:#888;">Email</td>
+                    <td style="font-weight:600;">{{ $data['email'] }}</td>
+                </tr>
+                <tr>
+                    <td style="color:#888;">Temporary Password</td>
+                    <td style="font-weight:600;">{{ $data['password'] }}</td>
+                </tr>
+            </table>
 
-                            <p style="text-align:center; margin:30px 0;">
-                                <a href="{{ $data['link'] }}"
-                                   style="background:#4CAF50; color:#fff; padding:12px 25px; text-decoration:none; border-radius:5px;">
-                                    Login to Your Account
-                                </a>
-                            </p>
+            <p>
+                For security reasons, please change your password immediately after your first login.
+            </p>
 
-                            <p>
-                                For security reasons, we strongly recommend that you log in using the above credentials and change your password immediately after your first login.
-                            </p>
+            <!-- CTA -->
+            <p style="text-align:center; margin:35px 0;">
+                <a href="{{ $data['smart_link'] }}"
+                   style="background:#4F46E5; color:#ffffff; padding:14px 28px; text-decoration:none; border-radius:8px; font-weight:600; display:inline-block;">
+                    Open App & Login
+                </a>
+            </p>
 
-                            <p>
-                                After logging in, please complete your profile by adding your personal details, certificates, and other required documents.
-                            </p>
+            <p style="font-size:13px; color:#888; text-align:center;">
+                This link will automatically redirect you to the correct app store based on your device.
+            </p>
 
-                            <p>If you have any questions, feel free to contact HR.</p>
+            <p>If you have any questions, feel free to contact HR.</p>
 
-                            <br>
-                         <p>
-                           <strong>Disclaimer :</strong><br>
+            <br>
+
+            <!-- Disclaimer (UNCHANGED) -->
+            <p style="font-size:12px; color:#666;">
+<strong>Disclaimer :</strong><br>
 This communication, including any links and attachments, is confidential and intended solely for the named recipient. It may contain sensitive personal and/or employment-related information. Any unauthorised access, use, disclosure, copying, or distribution is strictly prohibited and may be unlawful.
 If you are not the intended recipient, you must not access or rely on this information. Please notify the sender immediately and permanently delete this communication from your system.
 CHRISPP does not accept liability for any unauthorised use of this communication or for any loss or damage arising from access to the link outside its intended purpose. Users are responsible for maintaining the confidentiality of their login credentials and for accessing the system in a secure manner.
-                         </p>
-                        </td>
-                    </tr>
+            </p>
 
-                    <!-- Footer -->
-                    <tr>
-                        <td style="background:#f1f1f1; text-align:center; padding:15px; font-size:12px;">
-                            © {{ date('Y') }} Chrispp. All rights reserved.
-                        </td>
-                    </tr>
+        </td>
+    </tr>
 
-                </table>
+    <!-- Footer -->
+    <tr>
+        <td style="text-align:center; padding:20px; font-size:12px; color:#aaa;">
+            © {{ date('Y') }} Chrispp. All rights reserved.
+        </td>
+    </tr>
 
-            </td>
-        </tr>
-    </table>
+</table>
+
+</td>
+</tr>
+</table>
 
 </body>
 </html>

@@ -83,6 +83,20 @@ use App\Http\Controllers\API\V1\{
 
 Route::prefix('v1')->group(function () {
 
+    Route::get('/download-app', function () {
+        $agent = request()->header('User-Agent');
+
+        if (str_contains($agent, 'Android')) {
+            return redirect('https://play.google.com/store/apps/details?id=your.app');
+        }
+
+        if (str_contains($agent, 'iPhone') || str_contains($agent, 'iPad')) {
+            return redirect('https://apps.apple.com/app/id123456');
+        }
+
+        return redirect('https://chrispp.au/login'); // Fallback for desktop or unknown devices
+    });
+
     // User color preferences (sidebar/background)
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/user/getcolors', [UserColorController::class, 'getColors']);

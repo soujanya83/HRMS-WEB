@@ -137,7 +137,8 @@ class EmployeeInvitesEmailcontroller extends Controller
             'last_name' => $request->last_name,
             'organization_name' => $organization_name,
             'link' => $link,
-            'email' => $email // ✅ ADD THIS
+            'email' => $email, // ✅ ADD THIS
+            'smart_link' => "https://api.chrispp.au/api/v1/download-app"
         ];
 
         // ✅ Send Email
