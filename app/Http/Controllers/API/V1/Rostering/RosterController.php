@@ -15,16 +15,44 @@ class RosterController extends Controller
     // List all roster entries (optionally by org, employee, date, shift)
     public function index(Request $request)
     {
-        $query = Roster::with(['employee', 'organization', 'shift', 'creator']);
+        $query = Roster::with([
+            'employee.department', // 👈 load department
+            'organization',
+            'shift',
+            'creator'
+        ]);
+
         if ($request->organization_id) $query->where('organization_id', $request->organization_id);
         if ($request->employee_id) $query->where('employee_id', $request->employee_id);
         if ($request->roster_date) $query->where('roster_date', $request->roster_date);
         if ($request->shift_id) $query->where('shift_id', $request->shift_id);
+
         if ($request->start_date && $request->end_date) {
-        $query->whereBetween('roster_date', [$request->start_date, $request->end_date]);
-      }
+            $query->whereBetween('roster_date', [$request->start_date, $request->end_date]);
+        }
+
         $rosters = $query->orderBy('roster_date')->get();
-        return response()->json(['success' => true, 'data' => $rosters], 200);
+
+        // 👇 Attach attendance + department safely
+        $rosters->transform(function ($roster) {
+
+            // Department name (null safe)
+            $roster->department_name = optional($roster->employee->department)->name;
+
+            // Attendance status
+            $attendance = \App\Models\Employee\Attendance::where('employee_id', $roster->employee_id)
+                ->where('date', $roster->roster_date)
+                ->first();
+
+            $roster->attendance_status = $attendance ? $attendance->status : null;
+
+            return $roster;
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => $rosters
+        ], 200);
     }
 
     public function getTodayShift(Request $request)

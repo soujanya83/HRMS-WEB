@@ -7,6 +7,9 @@ use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Rostering\Shift;
+use App\Models\Rostering\RosterPeriod;
+use App\Models\Employee\Attendance;
 
 class Roster extends Model
 {
@@ -67,4 +70,10 @@ class Roster extends Model
     {
         return $this->belongsTo(RosterPeriod::class, 'roster_period_id');
     }
+
+    public function attendance()
+{
+    return $this->hasOne(Attendance::class, 'employee_id', 'employee_id')
+        ->whereColumn('attendance.date', 'rosters.roster_date');
+}
 }
