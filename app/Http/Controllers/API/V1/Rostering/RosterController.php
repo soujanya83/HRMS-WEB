@@ -37,8 +37,7 @@ class RosterController extends Controller
         $rosters->transform(function ($roster) {
 
             // Department name (null safe)
-            $roster->department_name = optional($roster->employee->department)->name;
-
+$roster->department_name = optional(optional($roster->employee)->department)->name;
             // Attendance status
             $attendance = \App\Models\Employee\Attendance::where('employee_id', $roster->employee_id)
                 ->where('date', $roster->roster_date)
