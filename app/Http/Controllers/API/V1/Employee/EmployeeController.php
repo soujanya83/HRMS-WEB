@@ -95,7 +95,7 @@ class EmployeeController extends Controller
     }
 }
 
-    public function show($id): JsonResponse
+   public function show($id): JsonResponse
     {
         try {
             $employee = Employee::with([
@@ -111,11 +111,21 @@ class EmployeeController extends Controller
                 'exitDetails'
             ])->findOrFail($id);
 
+            // 👇 Decrypt TFN safely
+            if ($employee->tax_file_number) {
+                try {
+                    $employee->tax_file_number = Crypt::decryptString($employee->tax_file_number);
+                } catch (\Exception $e) {
+                    $employee->tax_file_number = null; // or keep original
+                }
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Employee retrieved successfully',
                 'data' => $employee
             ], 200);
+
         } catch (Exception $e) {
             return $this->notFound('Employee not found', $e);
         }
