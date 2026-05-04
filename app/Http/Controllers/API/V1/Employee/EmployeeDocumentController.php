@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use GuzzleHttp\Client;
 use Aws\Textract\TextractClient;
+use Illuminate\Http\JsonResponse;
+
 
 class EmployeeDocumentController extends Controller
 {
@@ -269,7 +271,7 @@ TEXT
 
 
 
-    public function storeFlexible(Request $request)
+ public function storeFlexible(Request $request)
 {
     try {
         $validated = $request->validate([
@@ -281,13 +283,32 @@ TEXT
             'expiry_date'   => 'nullable|date',
         ]);
 
-        // Upload file
+        // 🔥 STEP 1: Check existing document
+        $existingDoc = EmployeeDocument::where('employee_id', $request->employee_id)
+            ->where('document_type', $request->document_type)
+            ->first();
+
+        if ($existingDoc) {
+            // 👉 Delete old file
+            if ($existingDoc->file_url) {
+                $oldPath = str_replace('/storage/', '', $existingDoc->file_url);
+
+                if (Storage::disk('public')->exists($oldPath)) {
+                    Storage::disk('public')->delete($oldPath);
+                }
+            }
+
+            // 👉 Delete old DB record
+            $existingDoc->delete();
+        }
+
+        // 🔥 STEP 2: Upload new file
         $path = $request->file('file')->store('employee_docs', 'public');
         $validated['file_url'] = Storage::url($path);
 
         $ocrText = '';
 
-        // 👉 Only run OCR if needed
+        // 👉 OCR logic (same as yours)
         if (!$request->issue_date || !$request->expiry_date) {
 
             try {
@@ -317,7 +338,6 @@ TEXT
                 \Log::error('Textract failed', ['error' => $e->getMessage()]);
             }
 
-            // 👉 Try AI extraction only if OCR found something
             if ($ocrText) {
                 if (!$request->expiry_date) {
                     $validated['expiry_date'] = $this->extractExpiryWithAI($ocrText);
@@ -329,17 +349,18 @@ TEXT
             }
         }
 
-        // ✅ Save anyway even if no dates found
+        // 🔥 STEP 3: Save new document
         $doc = EmployeeDocument::create($validated);
 
         return response()->json([
             'success' => true,
-            'message' => 'Document uploaded successfully',
+            'message' => $existingDoc 
+                ? 'Document replaced successfully' 
+                : 'Document uploaded successfully',
             'data'    => $doc
         ], 201);
 
     } catch (\Exception $e) {
-
         return response()->json([
             'success' => false,
             'message' => $e->getMessage()
@@ -424,6 +445,71 @@ public function getDocumentById($documentId)
     }
 }
 
+
+public function verifyDocument(Request $request, $id): JsonResponse
+{
+    try {
+        $validated = $request->validate([
+            'verify'      => 'required|string|max:255',
+            'verified_by' => 'required|integer|exists:users,id', // change if different table
+        ]);
+
+        $document = EmployeeDocument::findOrFail($id);
+
+        $document->update([
+            'verify'      => $validated['verify'],
+            'verified_by' => $validated['verified_by'],
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Document verified successfully',
+            'data'    => $document
+        ], 200);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage()
+        ], 500);
+    }
+}
+
+
+public function getEmployeeDocumentsStatus($employee_id): JsonResponse
+{
+    try {
+        $documents = EmployeeDocument::where('employee_id', $employee_id)->get();
+
+        if ($documents->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No documents found for this employee'
+            ], 404);
+        }
+
+        // 🔥 Check verification status
+        $unverifiedDocs = $documents->filter(function ($doc) {
+            return empty($doc->verify); // or != 'approved' if strict
+        });
+
+        $status = $unverifiedDocs->isEmpty() ? 'verified' : 'not_verified';
+
+        return response()->json([
+            'success' => true,
+            'employee_id' => $employee_id,
+            'documents_status' => $status,
+            'unverified_documents' => $unverifiedDocs->values(), // only if any
+            'data' => $documents
+        ], 200);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage()
+        ], 500);
+    }
+}
 
 
 }
