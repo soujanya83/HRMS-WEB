@@ -88,7 +88,7 @@ Route::prefix('v1')->group(function () {
         $agent = request()->header('User-Agent');
 
         if (str_contains($agent, 'Android')) {
-            return redirect('https://play.google.com/store/apps/details?id=your.app');
+            return redirect('https://play.google.com/store/apps/details?id=com.chrispp.hrms');
         }
 
         if (str_contains($agent, 'iPhone') || str_contains($agent, 'iPad')) {
