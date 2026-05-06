@@ -64,6 +64,7 @@ use App\Http\Controllers\API\V1\EmployeeInvitesEmailcontroller;
 use App\Http\Controllers\API\V1\InterviewQuestionController;
 use App\Http\Controllers\API\V1\ApplicantAnswerController;
 use App\Http\Controllers\API\V1\UserColorController;
+use App\Http\Controllers\API\V1\MandatoryQuestionController;
 
 use App\Http\Controllers\API\V1\{
     RoleController,
@@ -145,6 +146,8 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
             Route::post('/verify', [ProfilePinController::class, 'verifyPin']);
         });
     });
+
+    Route::apiResource('mandatory-questions', MandatoryQuestionController::class);
 
     // Face Embedding APIs
     Route::post('/employees/register-face', [FaceController::class, 'register']);
