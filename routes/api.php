@@ -92,7 +92,7 @@ Route::prefix('v1')->group(function () {
         }
 
         if (str_contains($agent, 'iPhone') || str_contains($agent, 'iPad')) {
-            return redirect('https://apps.apple.com/app/id123456');
+            return redirect('https://apps.apple.com/in/app/chrispp/id6766209098');
         }
 
         return redirect('https://chrispp.au/login'); // Fallback for desktop or unknown devices
