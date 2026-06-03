@@ -65,6 +65,7 @@ use App\Http\Controllers\API\V1\InterviewQuestionController;
 use App\Http\Controllers\API\V1\ApplicantAnswerController;
 use App\Http\Controllers\API\V1\UserColorController;
 use App\Http\Controllers\API\V1\MandatoryQuestionController;
+use App\Http\Controllers\API\V1\ProhibitionNoticeDeclarationController;
 
 use App\Http\Controllers\API\V1\{
     RoleController,
@@ -787,6 +788,21 @@ Route::prefix('answers')->group(function () {
 
     Route::delete('/{id}', [ApplicantAnswerController::class, 'destroy']);
 });
+
+
+
+// Group your routes (middleware like 'auth:sanctum' is recommended if you have auth setup)
+Route::prefix('declarations')->group(function () {
+    Route::post('/', [ProhibitionNoticeDeclarationController::class, 'store']);
+    Route::get('/{id}', [ProhibitionNoticeDeclarationController::class, 'show']);
+    Route::put('/{id}', [ProhibitionNoticeDeclarationController::class, 'update']);
+    Route::delete('/{id}', [ProhibitionNoticeDeclarationController::class, 'destroy']);
+    
+    // Custom route to fetch by employee ID
+    Route::get('/employee/{employeeId}', [ProhibitionNoticeDeclarationController::class, 'getByEmployee']);
+});
+
+
 
 
     });
