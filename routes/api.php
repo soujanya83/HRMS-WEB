@@ -66,6 +66,7 @@ use App\Http\Controllers\API\V1\ApplicantAnswerController;
 use App\Http\Controllers\API\V1\UserColorController;
 use App\Http\Controllers\API\V1\MandatoryQuestionController;
 use App\Http\Controllers\API\V1\ProhibitionNoticeDeclarationController;
+use App\Http\Controllers\API\V1\StaffRecordController;
 
 use App\Http\Controllers\API\V1\{
     RoleController,
@@ -800,6 +801,17 @@ Route::prefix('declarations')->group(function () {
     
     // Custom route to fetch by employee ID
     Route::get('/employee/{employeeId}', [ProhibitionNoticeDeclarationController::class, 'getByEmployee']);
+});
+
+
+Route::prefix('staff-records')->group(function () {
+    Route::post('/', [StaffRecordController::class, 'store']);
+    Route::get('/{id}', [StaffRecordController::class, 'show']);
+    Route::put('/{id}', [StaffRecordController::class, 'update']);
+    Route::delete('/{id}', [StaffRecordController::class, 'destroy']);
+    
+    // Custom route to fetch by employee ID
+    Route::get('/employee/{employeeId}', [StaffRecordController::class, 'getByEmployee']);
 });
 
 
