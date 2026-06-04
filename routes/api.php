@@ -67,6 +67,7 @@ use App\Http\Controllers\API\V1\UserColorController;
 use App\Http\Controllers\API\V1\MandatoryQuestionController;
 use App\Http\Controllers\API\V1\ProhibitionNoticeDeclarationController;
 use App\Http\Controllers\API\V1\StaffRecordController;
+use App\Http\Controllers\API\V1\TfnDeclarationController;
 
 use App\Http\Controllers\API\V1\{
     RoleController,
@@ -813,6 +814,16 @@ Route::prefix('staff-records')->group(function () {
     // Custom route to fetch by employee ID
     Route::get('/employee/{employeeId}', [StaffRecordController::class, 'getByEmployee']);
 });
+
+
+Route::prefix('tfn-declarations')->group(function () {
+    Route::post('/', [TfnDeclarationController::class, 'store']);
+    Route::get('/{id}', [TfnDeclarationController::class, 'show']);
+    Route::put('/{id}', [TfnDeclarationController::class, 'update']);
+    Route::delete('/{id}', [TfnDeclarationController::class, 'destroy']);
+    Route::get('/employee/{employeeId}', [TfnDeclarationController::class, 'getByEmployee']);
+});
+
 
 
 
