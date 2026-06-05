@@ -10,7 +10,7 @@ class SuperannuationForm extends Model
     use HasFactory;
 
     protected $fillable = [
-        'employee_id', 'organization_id', 'super_choice_type',
+        'Tax_file_number', 'Employee_number', 'Employee_name' ,  'employee_id', 'organization_id', 'super_choice_type',
         
         // Section B
         'b_super_fund_name', 'b_super_fund_abn', 'b_usi', 
