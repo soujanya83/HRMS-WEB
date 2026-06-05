@@ -29,6 +29,11 @@ class ProhibitionNoticeDeclaration extends Model
         'declaration_place',
         'declaration_date',
         'witness_name',
+        
+        // New columns
+        'declaration_person_name',
+        'declaration_person_signature_path',
+        'witness_signature_path',
     ];
 
     protected $casts = [
@@ -37,4 +42,20 @@ class ProhibitionNoticeDeclaration extends Model
         'is_subject_to_prohibition' => 'boolean',
         'is_prohibited_other_law' => 'boolean',
     ];
+
+    // Automatically append full URLs for the signatures to the JSON response
+    protected $appends = [
+        'declaration_person_signature_url',
+        'witness_signature_url'
+    ];
+
+    public function getDeclarationPersonSignatureUrlAttribute()
+    {
+        return $this->declaration_person_signature_path ? asset('storage/' . $this->declaration_person_signature_path) : null;
+    }
+
+    public function getWitnessSignatureUrlAttribute()
+    {
+        return $this->witness_signature_path ? asset('storage/' . $this->witness_signature_path) : null;
+    }
 }
