@@ -68,6 +68,7 @@ use App\Http\Controllers\API\V1\MandatoryQuestionController;
 use App\Http\Controllers\API\V1\ProhibitionNoticeDeclarationController;
 use App\Http\Controllers\API\V1\StaffRecordController;
 use App\Http\Controllers\API\V1\TfnDeclarationController;
+use App\Http\Controllers\API\V1\SuperannuationFormController;
 
 use App\Http\Controllers\API\V1\{
     RoleController,
@@ -822,6 +823,15 @@ Route::prefix('tfn-declarations')->group(function () {
     Route::put('/{id}', [TfnDeclarationController::class, 'update']);
     Route::delete('/{id}', [TfnDeclarationController::class, 'destroy']);
     Route::get('/employee/{employeeId}', [TfnDeclarationController::class, 'getByEmployee']);
+});
+
+
+Route::prefix('superannuation-forms')->group(function () {
+    Route::post('/', [SuperannuationFormController::class, 'store']);
+    Route::get('/{id}', [SuperannuationFormController::class, 'show']);
+    Route::put('/{id}', [SuperannuationFormController::class, 'update']);
+    Route::delete('/{id}', [SuperannuationFormController::class, 'destroy']);
+    Route::get('/employee/{employeeId}', [SuperannuationFormController::class, 'getByEmployee']);
 });
 
 
