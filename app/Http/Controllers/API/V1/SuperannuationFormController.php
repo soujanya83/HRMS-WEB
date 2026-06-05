@@ -81,6 +81,9 @@ class SuperannuationFormController extends Controller
         return [
             'employee_id' => "$req|integer",
             'organization_id' => "$req|integer",
+            'Tax_file_number' => "$req|string",
+            'Employee_number' => "$req|string",
+            'Employee_name' => "$req|string",
             'super_choice_type' => "$req|in:existing_fund,default_fund,smsf",
 
             // Section B rules
