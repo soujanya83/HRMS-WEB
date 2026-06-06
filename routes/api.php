@@ -69,6 +69,7 @@ use App\Http\Controllers\API\V1\ProhibitionNoticeDeclarationController;
 use App\Http\Controllers\API\V1\StaffRecordController;
 use App\Http\Controllers\API\V1\TfnDeclarationController;
 use App\Http\Controllers\API\V1\SuperannuationFormController;
+use App\Http\Controllers\API\V1\PidtdcFormController;
 
 use App\Http\Controllers\API\V1\{
     RoleController,
@@ -834,6 +835,14 @@ Route::prefix('superannuation-forms')->group(function () {
     Route::get('/employee/{employeeId}', [SuperannuationFormController::class, 'getByEmployee']);
 });
 
+
+Route::prefix('pidtdc-forms')->group(function () {
+    Route::post('/', [PidtdcFormController::class, 'store']);
+    Route::get('/{id}', [PidtdcFormController::class, 'show']);
+    Route::put('/{id}', [PidtdcFormController::class, 'update']);
+    Route::delete('/{id}', [PidtdcFormController::class, 'destroy']);
+    Route::get('/employee/{employeeId}', [PidtdcFormController::class, 'getByEmployee']);
+});
 
 
 
