@@ -70,6 +70,7 @@ use App\Http\Controllers\API\V1\StaffRecordController;
 use App\Http\Controllers\API\V1\TfnDeclarationController;
 use App\Http\Controllers\API\V1\SuperannuationFormController;
 use App\Http\Controllers\API\V1\PidtdcFormController;
+use App\Http\Controllers\API\V1\ChildSafeCodeOfConductFormController;
 
 use App\Http\Controllers\API\V1\{
     RoleController,
@@ -842,6 +843,14 @@ Route::prefix('pidtdc-forms')->group(function () {
     Route::put('/{id}', [PidtdcFormController::class, 'update']);
     Route::delete('/{id}', [PidtdcFormController::class, 'destroy']);
     Route::get('/employee/{employeeId}', [PidtdcFormController::class, 'getByEmployee']);
+});
+
+Route::prefix('child-safe-conduct')->group(function () {
+    Route::post('/', [ChildSafeCodeOfConductFormController::class, 'store']);
+    Route::get('/{id}', [ChildSafeCodeOfConductFormController::class, 'show']);
+    Route::put('/{id}', [ChildSafeCodeOfConductFormController::class, 'update']);
+    Route::delete('/{id}', [ChildSafeCodeOfConductFormController::class, 'destroy']);
+    Route::get('/employee/{employeeId}', [ChildSafeCodeOfConductFormController::class, 'getByEmployee']);
 });
 
 
