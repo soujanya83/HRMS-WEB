@@ -71,6 +71,10 @@ class Employee extends Model
         'is_face_registered' => 'boolean',
     ];
 
+    protected $hidden = [
+    'face_embedding',
+];
+
 
     // Relationships
     public function user()
