@@ -5,6 +5,7 @@ namespace App\Http\Controllers\API\V1\Rostering;
 use App\Http\Controllers\Controller;
 use App\Models\Rostering\ShiftSwapRequest;
 use Illuminate\Http\Request;
+use App\Models\Rostering\Roster;
 
 class ShiftSwapRequestController extends Controller
 {
@@ -23,16 +24,96 @@ class ShiftSwapRequestController extends Controller
     // Create swap request
     public function store(Request $request)
     {
-        $validated = $request->validate([
+            $validated = $request->validate([
             'requester_employee_id' => 'required|exists:employees,id',
-            'requester_roster_id' => 'required|exists:rosters,id',
-            'requested_employee_id' => 'required|exists:employees,id',
-            'requested_roster_id' => 'required|exists:rosters,id',
+            'requested_employee_id' => 'required|exists:employees,id|different:requester_employee_id',
+            'roster_date' => 'required|date',
             'requester_reason' => 'required|string|max:1000',
         ]);
-        $validated['status'] = 'Pending';
-        $swap = ShiftSwapRequest::create($validated);
-        return response()->json(['success' => true, 'data' => $swap], 201);
+        $requesterRoster = Roster::where('employee_id', $validated['requester_employee_id'])
+            ->whereDate('roster_date', $validated['roster_date'])
+            ->first();
+
+            if (!$requesterRoster) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Requester roster not found for selected date.'
+            ], 422);
+        }
+
+        $requestedRoster = Roster::where('employee_id', $validated['requested_employee_id'])
+            ->whereDate('roster_date', $validated['roster_date'])
+            ->first();
+
+            if (!$requestedRoster) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Requested employee roster not found for selected date.'
+            ], 422);
+        }
+
+        if ($requesterRoster->shift_id == $requestedRoster->shift_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Both employees are already assigned to the same shift.'
+            ], 422);
+        }
+
+        $existingSwap = ShiftSwapRequest::where(function ($q) use ($validated) {
+
+            $q->where('requester_employee_id', $validated['requester_employee_id'])
+            ->where('requested_employee_id', $validated['requested_employee_id']);
+
+        })->orWhere(function ($q) use ($validated) {
+
+            $q->where('requester_employee_id', $validated['requested_employee_id'])
+            ->where('requested_employee_id', $validated['requester_employee_id']);
+
+        })
+        ->whereIn('status', ['Pending', 'Accepted'])
+        ->whereDate('created_at', now()->toDateString())
+        ->exists();
+
+        if ($existingSwap) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A swap request already exists between these employees.'
+            ], 422);
+        }
+
+        $openSwapExists = ShiftSwapRequest::whereIn('status', ['Pending', 'Accepted'])
+            ->where(function ($query) use ($requesterRoster, $requestedRoster) {
+
+                $query->where('requester_roster_id', $requesterRoster->id)
+                    ->orWhere('requested_roster_id', $requesterRoster->id)
+                    ->orWhere('requester_roster_id', $requestedRoster->id)
+                    ->orWhere('requested_roster_id', $requestedRoster->id);
+
+            })
+            ->exists();
+
+            if ($openSwapExists) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A swap request is already pending for one of these rosters.'
+            ], 422);
+        }
+
+        $swap = ShiftSwapRequest::create([
+            'requester_employee_id' => $validated['requester_employee_id'],
+            'requested_employee_id' => $validated['requested_employee_id'],
+
+            'requester_roster_id' => $requesterRoster->id,
+            'requested_roster_id' => $requestedRoster->id,
+
+            'requester_reason' => $validated['requester_reason'],
+            'status' => 'Pending',
+        ]);
+
+
+
+
+        
     }
 
     // Show swap request

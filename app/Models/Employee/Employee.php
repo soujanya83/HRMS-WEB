@@ -168,3 +168,13 @@ class Employee extends Model
 }
 
 }
+
+
+//$employee = Employee::find($id);
+
+// $employee->makeVisible('face_embedding');
+
+// $employees = Employee::all();
+
+// $employees->makeVisible(['face_embedding']);
+
