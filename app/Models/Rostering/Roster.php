@@ -66,11 +66,6 @@ class Roster extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    public function rosterPeriod()
-{
-    // A Roster belongs to one RosterPeriod
-    return $this->belongsTo(\App\Models\Rostering\RosterPeriod::class, 'roster_period_id', 'id');
-}
 
     public function period()
     {

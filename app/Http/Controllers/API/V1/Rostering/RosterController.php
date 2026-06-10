@@ -40,7 +40,7 @@ class RosterController extends Controller
 
     if ($isEmployee) {
         // Option A: If you have a 'rosterPeriod' relationship set up on the Roster model
-        $query->whereHas('rosterPeriod', function ($q) {
+        $query->whereHas('period', function ($q) {
             $q->where('status', '!=', 'draft');
         });
 
