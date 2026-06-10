@@ -108,7 +108,7 @@ class ShiftSwapRequestController extends Controller
 
 
 
-
+return response()->json(['success' => true, 'data' => $swap], 201);
         
     }
 
