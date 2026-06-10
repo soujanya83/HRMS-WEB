@@ -122,18 +122,120 @@ return response()->json(['success' => true, 'data' => $swap], 201);
     }
 
     // Update (manager approve/reject, set status)
-    public function update(Request $request, $id)
-    {
-        $swap = ShiftSwapRequest::findOrFail($id);
-        $validated = $request->validate([
-            'status' => 'sometimes|in:Pending,Approved,Rejected,Cancelled',
-            'rejection_reason' => 'nullable|string|max:1000',
-            'manager_approver_id' => 'nullable|exists:users,id',
-            'manager_approved_at' => 'nullable|date',
-        ]);
-        $swap->update($validated);
-        return response()->json(['success' => true, 'data' => $swap], 200);
+  public function update(Request $request, $id)
+{
+    $swap = ShiftSwapRequest::findOrFail($id);
+
+    if (in_array($swap->status, ['Approved', 'Rejected', 'Cancelled'])) {
+        return response()->json([
+            'success' => false,
+            'message' => 'This swap request can no longer be edited.'
+        ], 422);
     }
+
+    $validated = $request->validate([
+        'requester_employee_id' => 'required|exists:employees,id',
+        'requested_employee_id' => 'required|exists:employees,id|different:requester_employee_id',
+        'roster_date' => 'required|date',
+        'requester_reason' => 'required|string|max:1000',
+    ]);
+
+    $requesterRoster = Roster::where('employee_id', $validated['requester_employee_id'])
+        ->whereDate('roster_date', $validated['roster_date'])
+        ->first();
+
+    if (!$requesterRoster) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Requester roster not found for selected date.'
+        ], 422);
+    }
+
+    $requestedRoster = Roster::where('employee_id', $validated['requested_employee_id'])
+        ->whereDate('roster_date', $validated['roster_date'])
+        ->first();
+
+    if (!$requestedRoster) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Requested employee roster not found for selected date.'
+        ], 422);
+    }
+
+    if ($requesterRoster->shift_id == $requestedRoster->shift_id) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Both employees are already assigned to the same shift.'
+        ], 422);
+    }
+
+    // Check if any Approved swap already exists for either employee on this roster date
+    $approvedSwapExists = ShiftSwapRequest::where('id', '!=', $swap->id)
+        ->where('status', 'Approved')
+        ->where(function ($q) use ($validated) {
+
+            $q->where('requester_employee_id', $validated['requester_employee_id'])
+                ->orWhere('requested_employee_id', $validated['requester_employee_id'])
+                ->orWhere('requester_employee_id', $validated['requested_employee_id'])
+                ->orWhere('requested_employee_id', $validated['requested_employee_id']);
+
+        })
+        ->whereHas('requesterRoster', function ($q) use ($validated) {
+            $q->whereDate('roster_date', $validated['roster_date']);
+        })
+        ->exists();
+
+    if ($approvedSwapExists) {
+        return response()->json([
+            'success' => false,
+            'message' => 'An approved swap request already exists for one of these employees on the selected date.'
+        ], 422);
+    }
+
+    // Duplicate pending request check
+    $pendingSwapExists = ShiftSwapRequest::where('id', '!=', $swap->id)
+        ->where('status', 'Pending')
+        ->where(function ($q) use ($validated) {
+
+            $q->where(function ($sub) use ($validated) {
+
+                $sub->where('requester_employee_id', $validated['requester_employee_id'])
+                    ->where('requested_employee_id', $validated['requested_employee_id']);
+
+            })->orWhere(function ($sub) use ($validated) {
+
+                $sub->where('requester_employee_id', $validated['requested_employee_id'])
+                    ->where('requested_employee_id', $validated['requester_employee_id']);
+
+            });
+
+        })
+        ->whereHas('requesterRoster', function ($q) use ($validated) {
+            $q->whereDate('roster_date', $validated['roster_date']);
+        })
+        ->exists();
+
+    if ($pendingSwapExists) {
+        return response()->json([
+            'success' => false,
+            'message' => 'A pending swap request already exists for these employees on the selected date.'
+        ], 422);
+    }
+
+    $swap->update([
+        'requester_employee_id' => $validated['requester_employee_id'],
+        'requested_employee_id' => $validated['requested_employee_id'],
+        'requester_roster_id' => $requesterRoster->id,
+        'requested_roster_id' => $requestedRoster->id,
+        'requester_reason' => $validated['requester_reason'],
+    ]);
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Swap request updated successfully.',
+        'data' => $swap->fresh()
+    ]);
+}
 
     // Delete/cancel swap request
     public function destroy($id)
