@@ -13,15 +13,44 @@ class ShiftSwapRequestController extends Controller
 {
     // List all swap requests (optionally by status/manager)
     public function index(Request $request)
-    {
-        $query = ShiftSwapRequest::with([
-            'requester', 'requesterRoster', 'requestedEmployee', 'requestedRoster', 'managerApprover'
-        ]);
-        if ($request->status) $query->where('status', $request->status);
-        if ($request->manager_approver_id) $query->where('manager_approver_id', $request->manager_approver_id);
-        $swaps = $query->orderByDesc('id')->get();
-        return response()->json(['success' => true, 'data' => $swaps], 200);
+{
+    $query = ShiftSwapRequest::with([
+        'requester',
+        'requesterRoster',
+        'requestedEmployee',
+        'requestedRoster',
+        'managerApprover'
+    ]);
+
+    if ($request->filled('organization_id')) {
+        $query->where('organization_id', $request->organization_id);
     }
+
+    if ($request->filled('employee_id')) {
+        $query->where('requester_employee_id', $request->employee_id);
+    }
+
+    if ($request->filled('status')) {
+        $query->where('status', $request->status);
+    }
+
+    if ($request->filled('manager_approver_id')) {
+        $query->where('manager_approver_id', $request->manager_approver_id);
+    }
+
+    if ($request->filled('roster_date')) {
+        $query->whereHas('requesterRoster', function ($q) use ($request) {
+            $q->whereDate('roster_date', $request->roster_date);
+        });
+    }
+
+    $swaps = $query->orderByDesc('id')->get();
+
+    return response()->json([
+        'success' => true,
+        'data' => $swaps
+    ], 200);
+}
 
     // Create swap request
     public function store(Request $request)
