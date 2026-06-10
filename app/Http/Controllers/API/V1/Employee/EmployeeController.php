@@ -1041,6 +1041,43 @@ public function employeesDataForAssignedRoles(Request $request): JsonResponse
     }
 }
 
+public function getEmployeeStatusCounts(Request $request): JsonResponse
+    {
+        // 1. Validate that the organization_id is provided in the request
+        $request->validate([
+            'organization_id' => 'required|integer|exists:organizations,id',
+        ]);
+
+        $orgId = $request->input('organization_id');
+
+        // 2. Count 'Active' employees (excluding soft-deleted)
+        $activeCount = Employee::where('organization_id', $orgId)
+            ->where('status', 'Active')
+            ->count();
+
+        // 3. Count 'On Probation' employees (excluding soft-deleted)
+        $probationCount = Employee::where('organization_id', $orgId)
+            ->where('status', 'On Probation')
+            ->count();
+
+        // 4. Count 'In Active' (soft deleted) employees
+        // onlyTrashed() restricts the query to ONLY records with a non-null deleted_at column
+        $inActiveCount = Employee::onlyTrashed()
+            ->where('organization_id', $orgId)
+            ->count();
+
+        // 5. Return the JSON response
+        return response()->json([
+            'success' => true,
+            'message' => 'Employee status counts retrieved successfully.',
+            'data' => [
+                'active'       => $activeCount,
+                'on_probation' => $probationCount,
+                'in_active'    => $inActiveCount,
+            ]
+        ], 200);
+    }
+
 
 
 
