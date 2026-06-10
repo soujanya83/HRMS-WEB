@@ -13,46 +13,64 @@ use App\Models\HolidayModel;
 class RosterController extends Controller
 {
     // List all roster entries (optionally by org, employee, date, shift)
-    public function index(Request $request)
-    {
-        $query = Roster::with([
-            'employee.department', // 👈 load department
-            'organization',
-            'shift',
-            'creator'
-        ]);
+   public function index(Request $request)
+{
+    $user = auth()->user();
 
-        if ($request->organization_id) $query->where('organization_id', $request->organization_id);
-        if ($request->employee_id) $query->where('employee_id', $request->employee_id);
-        if ($request->roster_date) $query->where('roster_date', $request->roster_date);
-        if ($request->shift_id) $query->where('shift_id', $request->shift_id);
+    $query = Roster::with([
+        'employee.department', // 👈 load department
+        'organization',
+        'shift',
+        'creator'
+    ]);
 
-        if ($request->start_date && $request->end_date) {
-            $query->whereBetween('roster_date', [$request->start_date, $request->end_date]);
-        }
+    if ($request->organization_id) $query->where('organization_id', $request->organization_id);
+    if ($request->employee_id) $query->where('employee_id', $request->employee_id);
+    if ($request->roster_date) $query->where('roster_date', $request->roster_date);
+    if ($request->shift_id) $query->where('shift_id', $request->shift_id);
 
-        $rosters = $query->orderBy('roster_date')->get();
+    if ($request->start_date && $request->end_date) {
+        $query->whereBetween('roster_date', [$request->start_date, $request->end_date]);
+    }
 
-        // 👇 Attach attendance + department safely
-        $rosters->transform(function ($roster) {
+    // 👇 NEW: Check if the user is an Employee 
+    // We check globally via Spatie, OR specifically for the requested organization using your custom method.
+    $isEmployee = $user->hasRole('Employee') || 
+                  ($request->organization_id && $user->hasRoleForOrganization('Employee', $request->organization_id));
 
-            // Department name (null safe)
-$roster->department_name = optional(optional($roster->employee)->department)->name;
-            // Attendance status
-            $attendance = \App\Models\Employee\Attendance::where('employee_id', $roster->employee_id)
-                ->where('date', $roster->roster_date)
-                ->first();
-
-            $roster->attendance_status = $attendance ? $attendance->status : null;
-
-            return $roster;
+    if ($isEmployee) {
+        // Option A: If you have a 'rosterPeriod' relationship set up on the Roster model
+        $query->whereHas('rosterPeriod', function ($q) {
+            $q->where('status', '!=', 'draft');
         });
 
-        return response()->json([
-            'success' => true,
-            'data' => $rosters
-        ], 200);
+        /* // Option B: If you DON'T have a relationship set up, use a subquery fallback:
+        // $query->whereNotIn('roster_period_id', \App\Models\RosterPeriod::where('status', 'draft')->select('id'));
+        */
     }
+
+    $rosters = $query->orderBy('roster_date')->get();
+
+    // 👇 Attach attendance + department safely
+    $rosters->transform(function ($roster) {
+        // Department name (null safe)
+        $roster->department_name = optional(optional($roster->employee)->department)->name;
+        
+        // Attendance status
+        $attendance = \App\Models\Employee\Attendance::where('employee_id', $roster->employee_id)
+            ->where('date', $roster->roster_date)
+            ->first();
+
+        $roster->attendance_status = $attendance ? $attendance->status : null;
+
+        return $roster;
+    });
+
+    return response()->json([
+        'success' => true,
+        'data' => $rosters
+    ], 200);
+}
 
     public function getTodayShift(Request $request)
     {
