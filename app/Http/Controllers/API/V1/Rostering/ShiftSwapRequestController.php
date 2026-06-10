@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Rostering\ShiftSwapRequest;
 use Illuminate\Http\Request;
 use App\Models\Rostering\Roster;
+use Illuminate\Support\Facades\DB;
+
 
 class ShiftSwapRequestController extends Controller
 {
@@ -246,20 +248,95 @@ return response()->json(['success' => true, 'data' => $swap], 201);
     }
 
     // Approve request
-    public function approve(Request $request, $id)
-    {
-        $swap = ShiftSwapRequest::findOrFail($id);
-        $validated = $request->validate([
-            'manager_approver_id' => 'required|exists:users,id'
+  public function approve(Request $request, $id)
+{
+    $swap = ShiftSwapRequest::with([
+        'requesterRoster',
+        'requestedRoster'
+    ])->findOrFail($id);
+
+    $validated = $request->validate([
+        'manager_approver_id' => 'required|exists:users,id'
+    ]);
+
+    if ($swap->status !== 'Pending') {
+        return response()->json([
+            'success' => false,
+            'message' => 'Only pending requests can be approved.'
+        ], 422);
+    }
+
+    $requesterRoster = $swap->requesterRoster;
+    $requestedRoster = $swap->requestedRoster;
+
+    if (!$requesterRoster || !$requestedRoster) {
+        return response()->json([
+            'success' => false,
+            'message' => 'One or both roster records no longer exist.'
+        ], 422);
+    }
+
+    if ($requesterRoster->employee_id == $requestedRoster->employee_id) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Both rosters already belong to the same employee.'
+        ], 422);
+    }
+
+    if ($requesterRoster->roster_date != $requestedRoster->roster_date) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Roster dates do not match.'
+        ], 422);
+    }
+
+    DB::beginTransaction();
+
+    try {
+
+        // Swap employees between rosters
+        $requesterEmployeeId = $requesterRoster->employee_id;
+
+        $requesterRoster->update([
+            'employee_id' => $requestedRoster->employee_id
         ]);
+
+        $requestedRoster->update([
+            'employee_id' => $requesterEmployeeId
+        ]);
+
+        // Mark request approved
         $swap->update([
             'status' => 'Approved',
             'manager_approver_id' => $validated['manager_approver_id'],
             'manager_approved_at' => now(),
             'rejection_reason' => null,
         ]);
-        return response()->json(['success' => true, 'data' => $swap], 200);
+
+        DB::commit();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Shift swap approved successfully.',
+            'data' => $swap->fresh([
+                'requester',
+                'requestedEmployee',
+                'requesterRoster',
+                'requestedRoster',
+                'managerApprover'
+            ])
+        ], 200);
+
+    } catch (\Exception $e) {
+
+        DB::rollBack();
+
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage()
+        ], 500);
     }
+}
 
     // Reject request
     public function reject(Request $request, $id)
