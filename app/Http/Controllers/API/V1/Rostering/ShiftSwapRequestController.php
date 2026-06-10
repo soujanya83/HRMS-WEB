@@ -27,6 +27,7 @@ class ShiftSwapRequestController extends Controller
     public function store(Request $request)
     {
             $validated = $request->validate([
+            'organization_id' => 'required|exists:organizations,id',
             'requester_employee_id' => 'required|exists:employees,id',
             'requested_employee_id' => 'required|exists:employees,id|different:requester_employee_id',
             'roster_date' => 'required|date',
@@ -98,6 +99,7 @@ class ShiftSwapRequestController extends Controller
         }
 
         $swap = ShiftSwapRequest::create([
+            'organization_id' => $validated['organization_id'],
             'requester_employee_id' => $validated['requester_employee_id'],
             'requested_employee_id' => $validated['requested_employee_id'],
 
