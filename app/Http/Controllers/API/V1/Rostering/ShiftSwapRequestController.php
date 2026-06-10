@@ -248,7 +248,7 @@ return response()->json(['success' => true, 'data' => $swap], 201);
     }
 
     // Approve request
-  public function approve(Request $request, $id)
+ public function approve(Request $request, $id)
 {
     $swap = ShiftSwapRequest::with([
         'requesterRoster',
@@ -279,7 +279,7 @@ return response()->json(['success' => true, 'data' => $swap], 201);
     if ($requesterRoster->employee_id == $requestedRoster->employee_id) {
         return response()->json([
             'success' => false,
-            'message' => 'Both rosters already belong to the same employee.'
+            'message' => 'Cannot swap shifts with the same employee.'
         ], 422);
     }
 
@@ -290,28 +290,51 @@ return response()->json(['success' => true, 'data' => $swap], 201);
         ], 422);
     }
 
+    if ($requesterRoster->shift_id == $requestedRoster->shift_id) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Both employees already have the same shift.'
+        ], 422);
+    }
+
     DB::beginTransaction();
 
     try {
 
-        // Swap employees between rosters
-        $requesterEmployeeId = $requesterRoster->employee_id;
+        // Swap shifts
+        $requesterShiftId = $requesterRoster->shift_id;
 
         $requesterRoster->update([
-            'employee_id' => $requestedRoster->employee_id
+            'shift_id' => $requestedRoster->shift_id
         ]);
 
         $requestedRoster->update([
-            'employee_id' => $requesterEmployeeId
+            'shift_id' => $requesterShiftId
         ]);
 
-        // Mark request approved
+        // Approve request
         $swap->update([
             'status' => 'Approved',
             'manager_approver_id' => $validated['manager_approver_id'],
             'manager_approved_at' => now(),
             'rejection_reason' => null,
         ]);
+
+        // Optional:
+        // Same date ke liye in dono rosters ki baaki pending requests cancel kar do
+        ShiftSwapRequest::where('id', '!=', $swap->id)
+            ->where('status', 'Pending')
+            ->where(function ($q) use ($requesterRoster, $requestedRoster) {
+
+                $q->where('requester_roster_id', $requesterRoster->id)
+                    ->orWhere('requested_roster_id', $requesterRoster->id)
+                    ->orWhere('requester_roster_id', $requestedRoster->id)
+                    ->orWhere('requested_roster_id', $requestedRoster->id);
+
+            })
+            ->update([
+                'status' => 'Cancelled'
+            ]);
 
         DB::commit();
 
