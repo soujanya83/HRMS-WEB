@@ -433,6 +433,7 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
         });
 
         Route::prefix('employees')->group(function () {
+                        Route::get('/status-counts', [EmployeeController::class, 'getEmployeeStatusCounts']);
             Route::get('/', [EmployeeController::class, 'index']);
             Route::post('/', [EmployeeController::class, 'store']);
             Route::get('/{id}', [EmployeeController::class, 'show']);
@@ -458,7 +459,6 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
             Route::delete('/{id}/documents/{docId}', [EmployeeController::class, 'deleteDocument']);
             Route::post('/bulk', [EmployeeController::class, 'bulkCreate']);
             Route::post('/basic/store-update',[EmployeeController::class, 'storeOrUpdateBasic']);
-            Route::get('/status-counts', [EmployeeController::class, 'getEmployeeStatusCounts']);
         });
 
         Route::prefix('attendance')->group(function () {
