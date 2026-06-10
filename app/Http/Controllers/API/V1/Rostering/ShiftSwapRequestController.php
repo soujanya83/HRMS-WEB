@@ -61,7 +61,7 @@ class ShiftSwapRequestController extends Controller
             ], 422);
         }
 
-     $existingSwap = ShiftSwapRequest::whereIn('status', ['Pending', 'Accepted'])
+     $existingSwap = ShiftSwapRequest::whereIn('status', ['Pending', 'Accepted','Approved'])
     ->where(function ($query) use ($requesterRoster, $requestedRoster) {
 
         $query->where('requester_roster_id', $requesterRoster->id)
@@ -79,7 +79,7 @@ class ShiftSwapRequestController extends Controller
     ], 422);
 }
 
-        $openSwapExists = ShiftSwapRequest::whereIn('status', ['Pending', 'Accepted'])
+        $openSwapExists = ShiftSwapRequest::whereIn('status', ['Pending', 'Accepted','Approved'])
             ->where(function ($query) use ($requesterRoster, $requestedRoster) {
 
                 $query->where('requester_roster_id', $requesterRoster->id)
