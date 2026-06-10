@@ -1066,6 +1066,8 @@ public function getEmployeeStatusCounts(Request $request): JsonResponse
             ->where('organization_id', $orgId)
             ->count();
 
+        $totalemployee = $activeCount + $probationCount;
+
         // 5. Return the JSON response
         return response()->json([
             'success' => true,
@@ -1074,6 +1076,7 @@ public function getEmployeeStatusCounts(Request $request): JsonResponse
                 'active'       => $activeCount,
                 'on_probation' => $probationCount,
                 'in_active'    => $inActiveCount,
+                'total_employee' => $totalemployee,
             ]
         ], 200);
     }
