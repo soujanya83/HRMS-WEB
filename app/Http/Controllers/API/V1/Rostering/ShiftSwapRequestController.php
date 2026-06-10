@@ -59,27 +59,23 @@ class ShiftSwapRequestController extends Controller
             ], 422);
         }
 
-        $existingSwap = ShiftSwapRequest::where(function ($q) use ($validated) {
+     $existingSwap = ShiftSwapRequest::whereIn('status', ['Pending', 'Accepted'])
+    ->where(function ($query) use ($requesterRoster, $requestedRoster) {
 
-            $q->where('requester_employee_id', $validated['requester_employee_id'])
-            ->where('requested_employee_id', $validated['requested_employee_id']);
+        $query->where('requester_roster_id', $requesterRoster->id)
+              ->orWhere('requested_roster_id', $requesterRoster->id)
+              ->orWhere('requester_roster_id', $requestedRoster->id)
+              ->orWhere('requested_roster_id', $requestedRoster->id);
 
-        })->orWhere(function ($q) use ($validated) {
+    })
+    ->exists();
 
-            $q->where('requester_employee_id', $validated['requested_employee_id'])
-            ->where('requested_employee_id', $validated['requester_employee_id']);
-
-        })
-        ->whereIn('status', ['Pending', 'Accepted'])
-        ->whereDate('created_at', now()->toDateString())
-        ->exists();
-
-        if ($existingSwap) {
-            return response()->json([
-                'success' => false,
-                'message' => 'A swap request already exists between these employees.'
-            ], 422);
-        }
+     if ($existingSwap) {
+    return response()->json([
+        'success' => false,
+        'message' => 'A swap request already exists for one of these employees on the selected date.'
+    ], 422);
+}
 
         $openSwapExists = ShiftSwapRequest::whereIn('status', ['Pending', 'Accepted'])
             ->where(function ($query) use ($requesterRoster, $requestedRoster) {
