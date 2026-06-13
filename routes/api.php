@@ -222,11 +222,34 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
         Route::apiResource('organization-leaves', OrganizationLeaveController::class);
         Route::apiResource('organization-attendance-rule', OrganizationAttendanceRuleController::class);
         Route::get('getbyorganization/{id}', [OrganizationAttendanceRuleController::class, 'getByOrganization']);
-        Route::get('/holiday/australian-states', [HolidayController::class, 'getAustralianStates']);
-        Route::post('/holiday/set-state', [HolidayController::class, 'setState']);
-        Route::post('/holiday/get-holidays', [HolidayController::class, 'getHolidays']);
-        Route::apiResource('organization-holiday', HolidayController::class);
-        Route::get('/upcoming-holidays', [HolidayController::class, 'upcomingHolidays']);
+
+
+
+
+            Route::post('holidays/sync-australian', [HolidayController::class, 'syncAustralianHolidays']);
+            
+            // Core Holiday Management Endpoints
+            Route::post('holidays/set-state', [HolidayController::class, 'setState']);
+            Route::get('holidays/australian-states', [HolidayController::class, 'getAustralianStates']);
+            Route::get('holidays', [HolidayController::class, 'getHolidays']); // The fixed combined fetcher
+            Route::get('holidays/index', [HolidayController::class, 'index']);
+            Route::post('holidays', [HolidayController::class, 'store']);
+            Route::get('holidays/upcoming', [HolidayController::class, 'upcomingHolidays']);
+            Route::get('holidays/{id}', [HolidayController::class, 'show']);
+            Route::put('holidays/{id}', [HolidayController::class, 'update']);
+            Route::patch('holidays/{id}', [HolidayController::class, 'partialUpdate']);
+            Route::delete('holidays/{id}', [HolidayController::class, 'destroy']);
+
+
+
+
+
+        // Route::post('holidays/sync-australian', [HolidayController::class, 'syncAustralianHolidays']);
+        // Route::get('/holidays/australian-states', [HolidayController::class, 'getAustralianStates']);
+        // Route::post('/holidays/set-state', [HolidayController::class, 'setState']);
+        // Route::post('/holidays/get-holidays', [HolidayController::class, 'getHolidays']);
+        // Route::apiResource('organization-holiday', HolidayController::class);
+        // Route::get('/upcoming-holidays', [HolidayController::class, 'upcomingHolidays']);
         Route::apiResource('organization-project', ProjectController::class);
         Route::apiResource('organization/employee/tasks', TaskController::class);
         Route::apiResource('organization/employee/timesheet', TimesheetController::class);
@@ -290,7 +313,7 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
 
         Route::get('employee/payrun/{organizationId}', [PayrunController::class, 'getPayrun']);
 
-        Route::patch('organization-holiday/{id}/partial', [HolidayController::class, 'partialUpdate']);
+        // Route::patch('organization-holiday/{id}/partial', [HolidayController::class, 'partialUpdate']);
         Route::apiResource('employee-overtime', OvertimeRequestController::class);
         Route::apiResource('organization/salarycomponents/types', SalaryComponentTypesController::class);
         Route::apiResource('organization/salary/components', SalaryComponentController::class);
