@@ -71,6 +71,7 @@ use App\Http\Controllers\API\V1\TfnDeclarationController;
 use App\Http\Controllers\API\V1\SuperannuationFormController;
 use App\Http\Controllers\API\V1\PidtdcFormController;
 use App\Http\Controllers\API\V1\ChildSafeCodeOfConductFormController;
+use App\Http\Controllers\API\V1\StaffInductionController;
 
 use App\Http\Controllers\API\V1\{
     RoleController,
@@ -875,6 +876,15 @@ Route::prefix('child-safe-conduct')->group(function () {
     Route::put('/{id}', [ChildSafeCodeOfConductFormController::class, 'update']);
     Route::delete('/{id}', [ChildSafeCodeOfConductFormController::class, 'destroy']);
     Route::get('/employee/{employeeId}', [ChildSafeCodeOfConductFormController::class, 'getByEmployee']);
+});
+
+
+Route::prefix('staff-inductions')->group(function () {
+    Route::post('/', [StaffInductionController::class, 'store']);
+    Route::get('/{id}', [StaffInductionController::class, 'show']);
+    Route::put('/{id}', [StaffInductionController::class, 'update']);
+    Route::delete('/{id}', [StaffInductionController::class, 'destroy']);
+    Route::get('/employee/{employeeId}', [StaffInductionController::class, 'getByEmployee']);
 });
 
 
