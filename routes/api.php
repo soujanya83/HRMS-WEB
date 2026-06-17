@@ -72,6 +72,7 @@ use App\Http\Controllers\API\V1\SuperannuationFormController;
 use App\Http\Controllers\API\V1\PidtdcFormController;
 use App\Http\Controllers\API\V1\ChildSafeCodeOfConductFormController;
 use App\Http\Controllers\API\V1\StaffInductionController;
+use App\Http\Controllers\API\V1\FormMasterController;
 
 use App\Http\Controllers\API\V1\{
     RoleController,
@@ -885,6 +886,25 @@ Route::prefix('staff-inductions')->group(function () {
     Route::put('/{id}', [StaffInductionController::class, 'update']);
     Route::delete('/{id}', [StaffInductionController::class, 'destroy']);
     Route::get('/employee/{employeeId}', [StaffInductionController::class, 'getByEmployee']);
+});
+
+
+Route::prefix('form-masters')->group(function () {
+
+    Route::get(
+        '/',
+        [FormMasterController::class, 'index']
+    );
+
+    Route::post(
+        '/update-order',
+        [FormMasterController::class, 'updateOrder']
+    );
+
+    Route::patch(
+        '/toggle-status/{id}',
+        [FormMasterController::class, 'toggleStatus']
+    );
 });
 
 
