@@ -74,6 +74,7 @@ use App\Http\Controllers\API\V1\ChildSafeCodeOfConductFormController;
 use App\Http\Controllers\API\V1\StaffInductionController;
 use App\Http\Controllers\API\V1\FormMasterController;
 use App\Http\Controllers\API\V1\DocumentMasterController;
+use App\Http\Controllers\API\V1\PolicyMasterController;
 
 use App\Http\Controllers\API\V1\{
     RoleController,
@@ -916,6 +917,23 @@ Route::prefix('document-masters')->group(function () {
     Route::post('/update-order', [DocumentMasterController::class, 'updateOrder']);
 
     Route::patch('/toggle-status/{id}', [DocumentMasterController::class, 'toggleStatus']);
+
+});
+
+
+Route::prefix('policy-masters')->group(function(){
+
+    Route::get('/',[PolicyMasterController::class,'index']);
+
+    Route::post('/',[PolicyMasterController::class,'store']);
+
+    Route::put('/{id}',[PolicyMasterController::class,'update']);
+
+    Route::delete('/{id}',[PolicyMasterController::class,'destroy']);
+
+    Route::post('/update-order',[PolicyMasterController::class,'updateOrder']);
+
+    Route::patch('/toggle-status/{id}',[PolicyMasterController::class,'toggleStatus']);
 
 });
 
