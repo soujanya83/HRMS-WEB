@@ -9,11 +9,10 @@ use App\Models\EmployeePolicyAcknowledgement;
 
 class EmployeePolicyMasterController extends Controller
 {
-    public function index()
-{
-    $employeeId = auth()->user()->employee_id;
-
-    $organizationId = auth()->user()->organization_id;
+    public function index(Request $request)
+    {
+        $employeeId = $request->query('employee_id');
+        $organizationId = $request->query('organization_id');
 
     $policies = PolicyMaster::where('is_active',1)
 
@@ -60,13 +59,13 @@ class EmployeePolicyMasterController extends Controller
     return response()->json($policies);
 }
 
-public function viewed($id)
+public function viewed($id, Request $request)
 {
     EmployeePolicyAcknowledgement::updateOrCreate(
 
         [
 
-            'employee_id'=>auth()->user()->employee_id,
+            'employee_id'=>$request->employee_id,
 
             'policy_master_id'=>$id
 
@@ -74,7 +73,7 @@ public function viewed($id)
 
         [
 
-            'organization_id'=>auth()->user()->organization_id,
+            'organization_id'=>$request->organization_id,
 
             'is_viewed'=>true,
 
@@ -96,13 +95,13 @@ public function viewed($id)
 }
 
 
-public function acknowledge($id)
+public function acknowledge($id, Request $request)
 {
     EmployeePolicyAcknowledgement::updateOrCreate(
 
         [
 
-            'employee_id'=>auth()->user()->employee_id,
+            'employee_id'=>$request->employee_id,
 
             'policy_master_id'=>$id
 
@@ -110,7 +109,7 @@ public function acknowledge($id)
 
         [
 
-            'organization_id'=>auth()->user()->organization_id,
+            'organization_id'=>$request->organization_id,
 
             'is_acknowledged'=>true,
 
