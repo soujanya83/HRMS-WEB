@@ -75,6 +75,7 @@ use App\Http\Controllers\API\V1\StaffInductionController;
 use App\Http\Controllers\API\V1\FormMasterController;
 use App\Http\Controllers\API\V1\DocumentMasterController;
 use App\Http\Controllers\API\V1\PolicyMasterController;
+use App\Http\Controllers\API\V1\EmployeePolicyMasterController;
 
 use App\Http\Controllers\API\V1\{
     RoleController,
@@ -936,6 +937,28 @@ Route::prefix('policy-masters')->group(function(){
     Route::patch('/toggle-status/{id}',[PolicyMasterController::class,'toggleStatus']);
 
 });
+
+
+Route::prefix('employee/policies')->group(function(){
+
+    Route::get('/',[
+        EmployeePolicyMasterController::class,
+        'index'
+    ]);
+
+    Route::post('/{id}/view',[
+        EmployeePolicyMasterController::class,
+        'viewed'
+    ]);
+
+    Route::post('/{id}/acknowledge',[
+        EmployeePolicyMasterController::class,
+        'acknowledge'
+    ]);
+
+});
+
+
 
 
 
