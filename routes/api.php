@@ -73,6 +73,7 @@ use App\Http\Controllers\API\V1\PidtdcFormController;
 use App\Http\Controllers\API\V1\ChildSafeCodeOfConductFormController;
 use App\Http\Controllers\API\V1\StaffInductionController;
 use App\Http\Controllers\API\V1\FormMasterController;
+use App\Http\Controllers\API\V1\DocumentMasterController;
 
 use App\Http\Controllers\API\V1\{
     RoleController,
@@ -905,6 +906,17 @@ Route::prefix('form-masters')->group(function () {
         '/toggle-status/{id}',
         [FormMasterController::class, 'toggleStatus']
     );
+});
+
+
+Route::prefix('document-masters')->group(function () {
+
+    Route::get('/', [DocumentMasterController::class, 'index']);
+
+    Route::post('/update-order', [DocumentMasterController::class, 'updateOrder']);
+
+    Route::patch('/toggle-status/{id}', [DocumentMasterController::class, 'toggleStatus']);
+
 });
 
 
