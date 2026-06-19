@@ -175,6 +175,8 @@ class EmployeeController extends Controller
 
             'emergency_contact_name' => ['nullable','string','max:255'],
             'emergency_contact_phone' => ['nullable','string','max:30'],
+            'account_name' => ['nullable','string','max:255'],
+            'bank_name' => ['nullable','string','max:255'],
         ];
 
         // If user_id provided, allow personal_email to match that user's email (ignore unique on that user id)
@@ -231,6 +233,8 @@ class EmployeeController extends Controller
             // Prepare employee data
             $employeeData = $validated;
             $employeeData['user_id'] = $createdUser->id;
+            $employeeData['account_name'] = $validated['account_name'];
+            $employeeData['bank_name'] = $validated['bank_name'];
 
             // Create Employee record
             $employee = Employee::create($employeeData);
@@ -331,6 +335,8 @@ class EmployeeController extends Controller
                 'visa_expiry_date' => 'nullable|date',
                 'emergency_contact_name' => 'nullable|string|max:255',
                 'emergency_contact_phone' => 'nullable|string|max:30',
+                'account_name' => 'nullable|string|max:255',
+                'bank_name' => 'nullable|string|max:255',
             ]);
 
             $employee->update($validated);
@@ -707,6 +713,10 @@ class EmployeeController extends Controller
 
                 'emergency_contact_relationship' => ['nullable', 'string', 'max:100'],
 
+                'account_name' => ['nullable', 'string', 'max:255'],
+
+                'bank_name' => ['nullable', 'string', 'max:255'],
+
             ];
 
             $validated = $request->validate($rules);
@@ -782,6 +792,12 @@ class EmployeeController extends Controller
 
                     'emergency_contact_relationship' =>
                         $validated['emergency_contact_relationship'] ?? null,
+
+                    'account_name' =>
+                        $validated['account_name'] ?? null,
+
+                    'bank_name' =>
+                        $validated['bank_name'] ?? null,
                 ];
 
                 if ($employeeId) {
@@ -908,6 +924,8 @@ public function updateEmployeeProfile(Request $request)
             'is_australian_citizen' => 'nullable|boolean',
             'is_pr' => 'nullable|boolean',
             'visa_type' => 'nullable|string|max:50',
+            'account_name' => 'nullable|string|max:255',
+            'bank_name' => 'nullable|string|max:255',
         ]);
 
         DB::beginTransaction();
@@ -964,6 +982,8 @@ public function updateEmployeeProfile(Request $request)
             'is_australian_citizen' => $request->is_australian_citizen,
             'is_pr' => $request->is_pr,
             'visa_type' => $request->visa_type,
+            'account_name' => $request->account_name,
+            'bank_name' => $request->bank_name,
         ]);
 
         DB::commit();

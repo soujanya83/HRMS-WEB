@@ -64,6 +64,8 @@ class Employee extends Model
         'citizenship_status',
         'is_australian_citizen',
         'is_pr',
+        'account_name',
+        'bank_name',
     ];
 
     protected $casts = [
