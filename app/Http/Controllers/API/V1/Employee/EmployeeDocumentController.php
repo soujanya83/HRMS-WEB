@@ -8,8 +8,6 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use GuzzleHttp\Client;
 use Aws\Textract\TextractClient;
-use Illuminate\Http\JsonResponse;
-
 
 class EmployeeDocumentController extends Controller
 {
@@ -205,7 +203,7 @@ class EmployeeDocumentController extends Controller
                     * Only return confidence above 90 when the certificate title clearly matches one document type.
                     * Do not explain.
                     * Return JSON only.
-                    TEXT
+                    TEXT,
                     ]
                     ],
                     'temperature' => 0,
