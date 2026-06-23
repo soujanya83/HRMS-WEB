@@ -23,6 +23,7 @@ class User extends Authenticatable
         'is_organization',
         'reset_password_otp_expires_at',
         'reset_password_otp',
+        'temp_pass_status',
     ];
 
     protected $hidden = [
@@ -115,3 +116,38 @@ public function organizations()
 }
 
 }
+
+// roles informations for furthur uses ----- 
+// A. Getting the Authenticated User's Roles
+// PHP
+// $user = auth()->user();
+
+ // 1. Get Global Roles (Spatie standard)
+ // Returns a collection of role names like ['Super Admin', 'Employee']
+// $globalRoles = $user->getRoleNames(); 
+
+ // 2. Get Organization-Specific Roles (Using your custom model method)
+// $orgId = $request->organization_id; 
+// $orgRoles = $user->rolesForOrganization($orgId)->pluck('name'); 
+// B. Assigning Roles to a User
+// PHP
+// $user = \App\Models\User::find($userId);
+
+ // 1. Assign a Global Role (Spatie standard)
+// $user->assignRole('HR Manager');
+
+ // 2. Assign an Organization-Specific Role (Using your custom model method)
+// $user->assignRoleForOrganization('Employee', $orgId);
+// C. Checking if a User has a Specific Role (Security Checks)
+// Use these inside your controllers to block unauthorized access.
+
+// PHP
+// $user = auth()->user();
+// $orgId = $request->organization_id;
+
+ // Check if they are a global Super Admin OR an Employee in this specific org
+// if ($user->hasRole('Super Admin') || $user->hasRoleForOrganization('Employee', $orgId)) {
+    // Allow action...
+// } else {
+//     return response()->json(['message' => 'Unauthorized action.'], 403);
+// }

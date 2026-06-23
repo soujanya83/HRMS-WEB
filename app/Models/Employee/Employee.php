@@ -64,12 +64,18 @@ class Employee extends Model
         'citizenship_status',
         'is_australian_citizen',
         'is_pr',
+        'account_name',
+        'bank_name',
     ];
 
     protected $casts = [
         'face_embedding' => 'array',
         'is_face_registered' => 'boolean',
     ];
+
+    protected $hidden = [
+    'face_embedding',
+];
 
 
     // Relationships
@@ -164,3 +170,13 @@ class Employee extends Model
 }
 
 }
+
+
+//$employee = Employee::find($id);
+
+// $employee->makeVisible('face_embedding');
+
+// $employees = Employee::all();
+
+// $employees->makeVisible(['face_embedding']);
+

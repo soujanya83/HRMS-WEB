@@ -64,6 +64,18 @@ use App\Http\Controllers\API\V1\EmployeeInvitesEmailcontroller;
 use App\Http\Controllers\API\V1\InterviewQuestionController;
 use App\Http\Controllers\API\V1\ApplicantAnswerController;
 use App\Http\Controllers\API\V1\UserColorController;
+use App\Http\Controllers\API\V1\MandatoryQuestionController;
+use App\Http\Controllers\API\V1\ProhibitionNoticeDeclarationController;
+use App\Http\Controllers\API\V1\StaffRecordController;
+use App\Http\Controllers\API\V1\TfnDeclarationController;
+use App\Http\Controllers\API\V1\SuperannuationFormController;
+use App\Http\Controllers\API\V1\PidtdcFormController;
+use App\Http\Controllers\API\V1\ChildSafeCodeOfConductFormController;
+use App\Http\Controllers\API\V1\StaffInductionController;
+use App\Http\Controllers\API\V1\FormMasterController;
+use App\Http\Controllers\API\V1\DocumentMasterController;
+use App\Http\Controllers\API\V1\PolicyMasterController;
+use App\Http\Controllers\API\V1\EmployeePolicyMasterController;
 
 use App\Http\Controllers\API\V1\{
     RoleController,
@@ -83,6 +95,20 @@ use App\Http\Controllers\API\V1\{
 
 Route::prefix('v1')->group(function () {
 
+    Route::get('/download-app', function () {
+        $agent = request()->header('User-Agent');
+
+        if (str_contains($agent, 'Android')) {
+            return redirect('https://play.google.com/store/apps/details?id=com.chrispp.hrms');
+        }
+
+        if (str_contains($agent, 'iPhone') || str_contains($agent, 'iPad')) {
+            return redirect('https://apps.apple.com/in/app/chrispp/id6766209098');
+        }
+
+        return redirect('https://chrispp.au/login'); // Fallback for desktop or unknown devices
+    });
+
     // User color preferences (sidebar/background)
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/user/getcolors', [UserColorController::class, 'getColors']);
@@ -95,6 +121,8 @@ Route::prefix('v1')->group(function () {
 
     Route::get('employeedata/{id}', [EmployeeController::class, 'show']);
     Route::post('employee-documents_upload', [EmployeeDocumentController::class, 'store']);
+    Route::post('/documents/{id}/verify', [EmployeeDocumentController::class, 'verifyDocument']);
+    Route::get('/employees/{employee_id}/documents', [EmployeeDocumentController::class, 'getEmployeeDocumentsStatus']);
 
     // Store (Flexible)
 Route::post('/employee/document/store-flexible', [EmployeeDocumentController::class, 'storeFlexible']);
@@ -116,6 +144,8 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
     Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 
 
+    Route::middleware('auth:sanctum')->post('/change-password', [AuthController::class, 'changePassword']);
+
     // Profile Pin APIs
     Route::prefix('profile-pin')->group(function () {
         // Public endpoints
@@ -127,6 +157,8 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
             Route::post('/verify', [ProfilePinController::class, 'verifyPin']);
         });
     });
+
+    Route::apiResource('mandatory-questions', MandatoryQuestionController::class);
 
     // Face Embedding APIs
     Route::post('/employees/register-face', [FaceController::class, 'register']);
@@ -195,11 +227,34 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
         Route::apiResource('organization-leaves', OrganizationLeaveController::class);
         Route::apiResource('organization-attendance-rule', OrganizationAttendanceRuleController::class);
         Route::get('getbyorganization/{id}', [OrganizationAttendanceRuleController::class, 'getByOrganization']);
-        Route::get('/holiday/australian-states', [HolidayController::class, 'getAustralianStates']);
-        Route::post('/holiday/set-state', [HolidayController::class, 'setState']);
-        Route::post('/holiday/get-holidays', [HolidayController::class, 'getHolidays']);
-        Route::apiResource('organization-holiday', HolidayController::class);
-        Route::get('/upcoming-holidays', [HolidayController::class, 'upcomingHolidays']);
+
+
+
+
+            Route::post('holidays/sync-australian', [HolidayController::class, 'syncAustralianHolidays']);
+            
+            // Core Holiday Management Endpoints
+            Route::post('holidays/set-state', [HolidayController::class, 'setState']);
+            Route::get('holidays/australian-states', [HolidayController::class, 'getAustralianStates']);
+            Route::get('holidays', [HolidayController::class, 'getHolidays']); // The fixed combined fetcher
+            Route::get('holidays/index', [HolidayController::class, 'index']);
+            Route::post('holidays', [HolidayController::class, 'store']);
+            Route::get('holidays/upcoming', [HolidayController::class, 'upcomingHolidays']);
+            Route::get('holidays/{id}', [HolidayController::class, 'show']);
+            Route::put('holidays/{id}', [HolidayController::class, 'update']);
+            Route::patch('holidays/{id}', [HolidayController::class, 'partialUpdate']);
+            Route::delete('holidays/{id}', [HolidayController::class, 'destroy']);
+
+
+
+
+
+        // Route::post('holidays/sync-australian', [HolidayController::class, 'syncAustralianHolidays']);
+        // Route::get('/holidays/australian-states', [HolidayController::class, 'getAustralianStates']);
+        // Route::post('/holidays/set-state', [HolidayController::class, 'setState']);
+        // Route::post('/holidays/get-holidays', [HolidayController::class, 'getHolidays']);
+        // Route::apiResource('organization-holiday', HolidayController::class);
+        // Route::get('/upcoming-holidays', [HolidayController::class, 'upcomingHolidays']);
         Route::apiResource('organization-project', ProjectController::class);
         Route::apiResource('organization/employee/tasks', TaskController::class);
         Route::apiResource('organization/employee/timesheet', TimesheetController::class);
@@ -263,7 +318,7 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
 
         Route::get('employee/payrun/{organizationId}', [PayrunController::class, 'getPayrun']);
 
-        Route::patch('organization-holiday/{id}/partial', [HolidayController::class, 'partialUpdate']);
+        // Route::patch('organization-holiday/{id}/partial', [HolidayController::class, 'partialUpdate']);
         Route::apiResource('employee-overtime', OvertimeRequestController::class);
         Route::apiResource('organization/salarycomponents/types', SalaryComponentTypesController::class);
         Route::apiResource('organization/salary/components', SalaryComponentController::class);
@@ -406,6 +461,7 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
         });
 
         Route::prefix('employees')->group(function () {
+                        Route::get('/status-counts', [EmployeeController::class, 'getEmployeeStatusCounts']);
             Route::get('/', [EmployeeController::class, 'index']);
             Route::post('/', [EmployeeController::class, 'store']);
             Route::get('/{id}', [EmployeeController::class, 'show']);
@@ -766,6 +822,145 @@ Route::prefix('answers')->group(function () {
 
     Route::delete('/{id}', [ApplicantAnswerController::class, 'destroy']);
 });
+
+
+
+// Group your routes (middleware like 'auth:sanctum' is recommended if you have auth setup)
+Route::prefix('declarations')->group(function () {
+    Route::post('/', [ProhibitionNoticeDeclarationController::class, 'store']);
+    Route::get('/{id}', [ProhibitionNoticeDeclarationController::class, 'show']);
+    Route::put('/{id}', [ProhibitionNoticeDeclarationController::class, 'update']);
+    Route::delete('/{id}', [ProhibitionNoticeDeclarationController::class, 'destroy']);
+    
+    // Custom route to fetch by employee ID
+    Route::get('/employee/{employeeId}', [ProhibitionNoticeDeclarationController::class, 'getByEmployee']);
+});
+
+
+Route::prefix('staff-records')->group(function () {
+    Route::post('/', [StaffRecordController::class, 'store']);
+    Route::get('/{id}', [StaffRecordController::class, 'show']);
+    Route::put('/{id}', [StaffRecordController::class, 'update']);
+    Route::delete('/{id}', [StaffRecordController::class, 'destroy']);
+    
+    // Custom route to fetch by employee ID
+    Route::get('/employee/{employeeId}', [StaffRecordController::class, 'getByEmployee']);
+});
+
+
+Route::prefix('tfn-declarations')->group(function () {
+    Route::post('/', [TfnDeclarationController::class, 'store']);
+    Route::get('/{id}', [TfnDeclarationController::class, 'show']);
+    Route::put('/{id}', [TfnDeclarationController::class, 'update']);
+    Route::delete('/{id}', [TfnDeclarationController::class, 'destroy']);
+    Route::get('/employee/{employeeId}', [TfnDeclarationController::class, 'getByEmployee']);
+});
+
+
+Route::prefix('superannuation-forms')->group(function () {
+    Route::post('/', [SuperannuationFormController::class, 'store']);
+    Route::get('/{id}', [SuperannuationFormController::class, 'show']);
+    Route::put('/{id}', [SuperannuationFormController::class, 'update']);
+    Route::delete('/{id}', [SuperannuationFormController::class, 'destroy']);
+    Route::get('/employee/{employeeId}', [SuperannuationFormController::class, 'getByEmployee']);
+});
+
+
+Route::prefix('pidtdc-forms')->group(function () {
+    Route::post('/', [PidtdcFormController::class, 'store']);
+    Route::get('/{id}', [PidtdcFormController::class, 'show']);
+    Route::put('/{id}', [PidtdcFormController::class, 'update']);
+    Route::delete('/{id}', [PidtdcFormController::class, 'destroy']);
+    Route::get('/employee/{employeeId}', [PidtdcFormController::class, 'getByEmployee']);
+});
+
+Route::prefix('child-safe-conduct')->group(function () {
+    Route::post('/', [ChildSafeCodeOfConductFormController::class, 'store']);
+    Route::get('/{id}', [ChildSafeCodeOfConductFormController::class, 'show']);
+    Route::put('/{id}', [ChildSafeCodeOfConductFormController::class, 'update']);
+    Route::delete('/{id}', [ChildSafeCodeOfConductFormController::class, 'destroy']);
+    Route::get('/employee/{employeeId}', [ChildSafeCodeOfConductFormController::class, 'getByEmployee']);
+});
+
+
+Route::prefix('staff-inductions')->group(function () {
+    Route::post('/', [StaffInductionController::class, 'store']);
+    Route::get('/{id}', [StaffInductionController::class, 'show']);
+    Route::put('/{id}', [StaffInductionController::class, 'update']);
+    Route::delete('/{id}', [StaffInductionController::class, 'destroy']);
+    Route::get('/employee/{employeeId}', [StaffInductionController::class, 'getByEmployee']);
+});
+
+
+Route::prefix('form-masters')->group(function () {
+
+    Route::get(
+        '/',
+        [FormMasterController::class, 'index']
+    );
+
+    Route::post(
+        '/update-order',
+        [FormMasterController::class, 'updateOrder']
+    );
+
+    Route::patch(
+        '/toggle-status/{id}',
+        [FormMasterController::class, 'toggleStatus']
+    );
+});
+
+
+Route::prefix('document-masters')->group(function () {
+
+    Route::get('/', [DocumentMasterController::class, 'index']);
+
+    Route::post('/update-order', [DocumentMasterController::class, 'updateOrder']);
+
+    Route::patch('/toggle-status/{id}', [DocumentMasterController::class, 'toggleStatus']);
+
+});
+
+
+Route::prefix('policy-masters')->group(function(){
+
+    Route::get('/',[PolicyMasterController::class,'index']);
+
+    Route::post('/',[PolicyMasterController::class,'store']);
+
+    Route::put('/{id}',[PolicyMasterController::class,'update']);
+
+    Route::delete('/{id}',[PolicyMasterController::class,'destroy']);
+
+    Route::post('/update-order',[PolicyMasterController::class,'updateOrder']);
+
+    Route::patch('/toggle-status/{id}',[PolicyMasterController::class,'toggleStatus']);
+
+});
+
+
+Route::prefix('employee/policies')->group(function(){
+
+    Route::get('/',[
+        EmployeePolicyMasterController::class,
+        'index'
+    ]);
+
+    Route::post('/{id}/view',[
+        EmployeePolicyMasterController::class,
+        'viewed'
+    ]);
+
+    Route::post('/{id}/acknowledge',[
+        EmployeePolicyMasterController::class,
+        'acknowledge'
+    ]);
+
+});
+
+
+
+
 
 
     });

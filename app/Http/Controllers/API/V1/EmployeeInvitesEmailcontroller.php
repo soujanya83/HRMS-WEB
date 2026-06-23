@@ -15,6 +15,36 @@ use Illuminate\Support\Facades\DB;
 
 class EmployeeInvitesEmailcontroller extends Controller
 {
+
+
+
+   private function generateStrongPassword($length = 10)
+{
+    $lowercase = 'abcdefghijklmnopqrstuvwxyz';
+    $uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    $numbers = '0123456789';
+    $special = '!@#$%^&*()_-=+;:,.?';
+
+    // Ensure at least one from each category
+    $password = 
+        $lowercase[rand(0, strlen($lowercase) - 1)] .
+        $uppercase[rand(0, strlen($uppercase) - 1)] .
+        $numbers[rand(0, strlen($numbers) - 1)] .
+        $special[rand(0, strlen($special) - 1)];
+
+    // Remaining characters
+    $all = $lowercase . $uppercase . $numbers . $special;
+    for ($i = 4; $i < $length; $i++) {
+        $password .= $all[rand(0, strlen($all) - 1)];
+    }
+
+    // Shuffle to avoid predictable pattern
+    return str_shuffle($password);
+}
+
+
+
+
     public function sendInvite(Request $request)
 {
     try {
@@ -37,6 +67,7 @@ class EmployeeInvitesEmailcontroller extends Controller
 
         $employee = null;
         $createdUser = false;
+         $rawPassword = $this->generateStrongPassword(10); // simple random password
 
         if ($user) {
 
@@ -64,7 +95,7 @@ class EmployeeInvitesEmailcontroller extends Controller
 
         } else {
             // ✅ Create new user
-            $rawPassword = 12345678;
+           
 
             $user = User::create([
                 'name' => trim($request->name . ' ' . $request->last_name),
@@ -95,16 +126,19 @@ class EmployeeInvitesEmailcontroller extends Controller
         DB::commit();
 
         // ✅ Generate link with employee ID
-        $link = "https://chrispp.com/apply/" . $employee->id;
+        $link = "https://chrispp.au/login";
         $organization_name = Organization::find($organizationId)->name;
     
 
         // ✅ Email Data
         $data = [
             'name' => $request->name,
+            'password' => $rawPassword,
             'last_name' => $request->last_name,
             'organization_name' => $organization_name,
-            'link' => $link
+            'link' => $link,
+            'email' => $email, // ✅ ADD THIS
+            'smart_link' => "https://api.chrispp.au/api/v1/download-app"
         ];
 
         // ✅ Send Email
@@ -131,4 +165,8 @@ class EmployeeInvitesEmailcontroller extends Controller
         ]);
     }
 }
+
+
+
+
 }

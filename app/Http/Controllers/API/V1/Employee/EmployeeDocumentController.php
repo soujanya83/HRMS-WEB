@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use GuzzleHttp\Client;
 use Aws\Textract\TextractClient;
+use Illuminate\Http\JsonResponse;
+
 
 class EmployeeDocumentController extends Controller
 {
