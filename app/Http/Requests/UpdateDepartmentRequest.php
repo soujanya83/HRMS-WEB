@@ -26,6 +26,8 @@ class UpdateDepartmentRequest extends FormRequest
         return [
             'name' => 'sometimes|required|string|max:255',
             'description' => 'nullable|string',
+            'age_group' => 'nullable|string|max:255',
+            'color_code' => 'nullable|string|max:15', // Assuming color code is in
         ];
     }
 
