@@ -128,11 +128,14 @@ class AuthController extends Controller
         // ✅ Token
         $token = $user->createToken("API Token")->plainTextToken;
 
+        $employee = Employee::where('user_id', $user->id)->first();
+
         return response()->json([
             "status"  => true,
             "message" => "Login successful",
             "data"    => [
                 "user"  => $user,
+                "employee" => $employee ?? null, // include employee data if exists
                 "roles" => $rolesData, // 👈 important
                 "token" => $token
             ]
@@ -329,4 +332,62 @@ public function resetPassword(Request $request)
         ], 500);
     }
 }
+
+  
+   public function changePassword(Request $request)
+    {
+        // ✅ Validation
+        $validator = Validator::make($request->all(), [
+            // 'current_password' => 'required',
+            'new_password' => 'required|min:6|confirmed', 
+            // expects new_password + new_password_confirmation
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => false,
+                'message' => $validator->errors()->first()
+            ], 422);
+        }
+
+        $user = Auth::user();
+
+        if (!($user instanceof User)) {
+            return response()->json([
+                'status' => false,
+                'message' => 'User not authenticated'
+            ], 401);
+        }
+
+        // ✅ Check current password
+        // if (!Hash::check($request->current_password, $user->password)) {
+        //     return response()->json([
+        //         'status' => false,
+        //         'message' => 'Current password is incorrect'
+        //     ], 401);
+        // }
+
+        // ❌ Prevent same password reuse
+        // if (Hash::check($request->new_password, $user->password)) {
+        //     return response()->json([
+        //         'status' => false,
+        //         'message' => 'New password cannot be same as old password'
+        //     ], 400);
+        // }
+
+        // ✅ Update password
+        $user->password = Hash::make($request->new_password);
+
+        // 👉 OPTIONAL (Highly Recommended)
+        $user->temp_pass_status = 1; // mark password as updated
+
+        $user->save();
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Password changed successfully'
+        ]);
+    }
+
+  
 }

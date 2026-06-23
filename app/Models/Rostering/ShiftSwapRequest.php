@@ -12,6 +12,7 @@ class ShiftSwapRequest extends Model
     use HasFactory;
 
     protected $fillable = [
+        'organization_id',
         'requester_employee_id',
         'requester_roster_id',
         'requested_employee_id',

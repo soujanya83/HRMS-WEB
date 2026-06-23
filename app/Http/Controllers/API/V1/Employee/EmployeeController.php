@@ -34,29 +34,68 @@ use Illuminate\Support\Facades\Crypt;
 
 class EmployeeController extends Controller
 {
-    public function index(): JsonResponse
-    {
-        try {
-            $employees = Employee::with([
-                'user',
-                'organization',
-                'department',
-                'designation',
-                'applicant',
-                'manager'
-            ])->orderBy('joining_date', 'desc')->get();
+   public function index(Request $request): JsonResponse
+{
+    try {
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Employees retrieved successfully',
-                'data' => $employees
-            ], 200);
-        } catch (Exception $e) {
-            return $this->serverError('Failed to retrieve employees', $e);
+        /* ============================
+         | 1. VALIDATION
+         ============================ */
+        $validated = $request->validate([
+            'organization_id' => ['required', 'exists:organizations,id'],
+            'status' => ['nullable', 'in:Active,On Probation,On Leave,Terminated'],
+            'department_id' => ['nullable', 'exists:departments,id'],
+            'per_page' => ['nullable', 'integer', 'min:1']
+        ]);
+
+        $perPage = $request->per_page ?? 10;
+
+        /* ============================
+         | 2. QUERY BUILDING
+         ============================ */
+        $query = Employee::with([
+            'user',
+            'organization',
+            'department',
+            'designation',
+            'applicant',
+            'manager'
+        ])
+        ->where('organization_id', $validated['organization_id']);
+
+        // ✅ Filter by status
+        if (!empty($validated['status'])) {
+            $query->where('status', $validated['status']);
         }
-    }
 
-    public function show($id): JsonResponse
+        // ✅ Filter by department
+        if (!empty($validated['department_id'])) {
+            $query->where('department_id', $validated['department_id']);
+        }
+
+        /* ============================
+         | 3. PAGINATION
+         ============================ */
+        $employees = $query
+            ->orderBy('joining_date', 'desc')
+            ->paginate($perPage);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Employees retrieved successfully',
+            'data' => $employees
+        ], 200);
+
+    } catch (Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to retrieve employees',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
+
+   public function show($id): JsonResponse
     {
         try {
             $employee = Employee::with([
@@ -72,11 +111,21 @@ class EmployeeController extends Controller
                 'exitDetails'
             ])->findOrFail($id);
 
+            // 👇 Decrypt TFN safely
+            if ($employee->tax_file_number) {
+                try {
+                    $employee->tax_file_number = Crypt::decryptString($employee->tax_file_number);
+                } catch (\Exception $e) {
+                    $employee->tax_file_number = null; // or keep original
+                }
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Employee retrieved successfully',
                 'data' => $employee
             ], 200);
+
         } catch (Exception $e) {
             return $this->notFound('Employee not found', $e);
         }
@@ -126,6 +175,8 @@ class EmployeeController extends Controller
 
             'emergency_contact_name' => ['nullable','string','max:255'],
             'emergency_contact_phone' => ['nullable','string','max:30'],
+            'account_name' => ['nullable','string','max:255'],
+            'bank_name' => ['nullable','string','max:255'],
         ];
 
         // If user_id provided, allow personal_email to match that user's email (ignore unique on that user id)
@@ -182,6 +233,8 @@ class EmployeeController extends Controller
             // Prepare employee data
             $employeeData = $validated;
             $employeeData['user_id'] = $createdUser->id;
+            $employeeData['account_name'] = $validated['account_name'];
+            $employeeData['bank_name'] = $validated['bank_name'];
 
             // Create Employee record
             $employee = Employee::create($employeeData);
@@ -282,6 +335,8 @@ class EmployeeController extends Controller
                 'visa_expiry_date' => 'nullable|date',
                 'emergency_contact_name' => 'nullable|string|max:255',
                 'emergency_contact_phone' => 'nullable|string|max:30',
+                'account_name' => 'nullable|string|max:255',
+                'bank_name' => 'nullable|string|max:255',
             ]);
 
             $employee->update($validated);
@@ -658,6 +713,10 @@ class EmployeeController extends Controller
 
                 'emergency_contact_relationship' => ['nullable', 'string', 'max:100'],
 
+                'account_name' => ['nullable', 'string', 'max:255'],
+
+                'bank_name' => ['nullable', 'string', 'max:255'],
+
             ];
 
             $validated = $request->validate($rules);
@@ -733,6 +792,12 @@ class EmployeeController extends Controller
 
                     'emergency_contact_relationship' =>
                         $validated['emergency_contact_relationship'] ?? null,
+
+                    'account_name' =>
+                        $validated['account_name'] ?? null,
+
+                    'bank_name' =>
+                        $validated['bank_name'] ?? null,
                 ];
 
                 if ($employeeId) {
@@ -859,6 +924,8 @@ public function updateEmployeeProfile(Request $request)
             'is_australian_citizen' => 'nullable|boolean',
             'is_pr' => 'nullable|boolean',
             'visa_type' => 'nullable|string|max:50',
+            'account_name' => 'nullable|string|max:255',
+            'bank_name' => 'nullable|string|max:255',
         ]);
 
         DB::beginTransaction();
@@ -915,6 +982,8 @@ public function updateEmployeeProfile(Request $request)
             'is_australian_citizen' => $request->is_australian_citizen,
             'is_pr' => $request->is_pr,
             'visa_type' => $request->visa_type,
+            'account_name' => $request->account_name,
+            'bank_name' => $request->bank_name,
         ]);
 
         DB::commit();
@@ -991,6 +1060,46 @@ public function employeesDataForAssignedRoles(Request $request): JsonResponse
         ], 500);
     }
 }
+
+public function getEmployeeStatusCounts(Request $request): JsonResponse
+    {
+        // 1. Validate that the organization_id is provided in the request
+        $request->validate([
+            'organization_id' => 'required|integer|exists:organizations,id',
+        ]);
+
+        $orgId = $request->input('organization_id');
+
+        // 2. Count 'Active' employees (excluding soft-deleted)
+        $activeCount = Employee::where('organization_id', $orgId)
+            ->where('status', 'Active')
+            ->count();
+
+        // 3. Count 'On Probation' employees (excluding soft-deleted)
+        $probationCount = Employee::where('organization_id', $orgId)
+            ->where('status', 'On Probation')
+            ->count();
+
+        // 4. Count 'In Active' (soft deleted) employees
+        // onlyTrashed() restricts the query to ONLY records with a non-null deleted_at column
+        $inActiveCount = Employee::onlyTrashed()
+            ->where('organization_id', $orgId)
+            ->count();
+
+        $totalemployee = $activeCount + $probationCount;
+
+        // 5. Return the JSON response
+        return response()->json([
+            'success' => true,
+            'message' => 'Employee status counts retrieved successfully.',
+            'data' => [
+                'active'       => $activeCount,
+                'on_probation' => $probationCount,
+                'in_active'    => $inActiveCount,
+                'total_employee' => $totalemployee,
+            ]
+        ], 200);
+    }
 
 
 
