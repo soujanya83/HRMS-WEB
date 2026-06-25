@@ -501,9 +501,8 @@ class EmployeeController extends Controller
     public function getByOrganization($id): JsonResponse
     {
         $employees = Employee::where('organization_id', $id)->with(['organization', 'department', 'designation','xeroEmployeeConnection'])->get();
-        $employees->getCollection()->transform(function ($employee) {
-            return $employee->makeVisible(['face_embedding']);
-        });
+            $employees->each(fn ($employee) => $employee->makeVisible(['face_embedding']));
+
         return response()->json(['success' => true, 'data' => $employees], 200);
     }
 
