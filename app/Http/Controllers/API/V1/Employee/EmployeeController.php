@@ -60,7 +60,7 @@ class EmployeeController extends Controller
             'designation',
             'applicant',
             'manager'
-        ])
+        ])->makeVisible(['face_embedding'])
         ->where('organization_id', $validated['organization_id']);
 
         // ✅ Filter by status
@@ -109,7 +109,8 @@ class EmployeeController extends Controller
                 'employmentHistory',
                 'probationPeriod',
                 'exitDetails'
-            ])->findOrFail($id);
+            ])->makeVisible(['face_embedding'])
+            ->findOrFail($id);
 
             // 👇 Decrypt TFN safely
             if ($employee->tax_file_number) {
