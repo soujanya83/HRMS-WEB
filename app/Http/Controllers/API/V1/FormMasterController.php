@@ -9,19 +9,39 @@ use App\Models\FormMaster;
 
 class FormMasterController extends Controller
 {
-    public function index()
+  public function index(Request $request)
 {
-    $forms = \App\Models\FormMaster::query()
-        ->orderBy('sort_order')
-        ->get();
+    $employeeId = $request->employee_id;
+
+    $forms = \App\Models\FormMaster::orderBy('sort_order')->get();
+
+    $filledCount = 0;
+
+    if ($employeeId) {
+
+        $forms->transform(function ($form) use ($employeeId, &$filledCount) {
+
+            $isFilled = DB::table($form->table_name)
+                ->where('employee_id', $employeeId)
+                ->exists();
+
+            if ($isFilled) {
+                $filledCount++;
+            }
+
+            $form->is_filled = $isFilled;
+
+            return $form;
+        });
+    }
 
     return response()->json([
         'status' => true,
+        'completed_forms' => $filledCount,
+        'total_forms' => $forms->count(),
         'data' => $forms
     ]);
-
-
-    }
+}
 
 
     public function updateOrder(Request $request)
