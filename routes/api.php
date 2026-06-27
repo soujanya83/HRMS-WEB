@@ -145,6 +145,7 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
 
 
     Route::middleware('auth:sanctum')->post('/change-password', [AuthController::class, 'changePassword']);
+    Route::middleware('auth:sanctum')->post('/password-change', [AuthController::class, 'passwordChange']);
 
     // Profile Pin APIs
     Route::prefix('profile-pin')->group(function () {
