@@ -180,6 +180,10 @@ class EmployeeController extends Controller
 
             'emergency_contact_name' => ['nullable','string','max:255'],
             'emergency_contact_phone' => ['nullable','string','max:30'],
+            'emergency_contact_relationship' => ['nullable','string','max:255'],
+            'emergency_contact_name2' => ['nullable','string','max:255'],
+            'emergency_contact_phone2' => ['nullable','string','max:30'],
+            'emergency_contact_relationship2' => ['nullable','string','max:255'],
             'account_name' => ['nullable','string','max:255'],
             'bank_name' => ['nullable','string','max:255'],
         ];
@@ -340,6 +344,10 @@ class EmployeeController extends Controller
                 'visa_expiry_date' => 'nullable|date',
                 'emergency_contact_name' => 'nullable|string|max:255',
                 'emergency_contact_phone' => 'nullable|string|max:30',
+                'emergency_contact_relationship' => 'nullable|string|max:255',
+                'emergency_contact_name2' => 'nullable|string|max:255',
+                'emergency_contact_phone2' => 'nullable|string|max:30',
+                'emergency_contact_relationship2' => 'nullable|string|max:255',
                 'account_name' => 'nullable|string|max:255',
                 'bank_name' => 'nullable|string|max:255',
             ]);
@@ -719,6 +727,9 @@ class EmployeeController extends Controller
                 'emergency_contact_phone' => ['nullable', 'string', 'max:30'],
 
                 'emergency_contact_relationship' => ['nullable', 'string', 'max:100'],
+                'emergency_contact_name2' => ['nullable', 'string', 'max:255'],
+                'emergency_contact_phone2' => ['nullable', 'string', 'max:30'],
+                'emergency_contact_relationship2' => ['nullable', 'string', 'max:100'],
 
                 'account_name' => ['nullable', 'string', 'max:255'],
 
@@ -799,6 +810,12 @@ class EmployeeController extends Controller
 
                     'emergency_contact_relationship' =>
                         $validated['emergency_contact_relationship'] ?? null,
+                    'emergency_contact_name2' =>
+                        $validated['emergency_contact_name2'] ?? null,
+                    'emergency_contact_phone2' =>
+                        $validated['emergency_contact_phone2'] ?? null,
+                    'emergency_contact_relationship2' =>
+                        $validated['emergency_contact_relationship2'] ?? null,
 
                     'account_name' =>
                         $validated['account_name'] ?? null,
@@ -917,6 +934,9 @@ public function updateEmployeeProfile(Request $request)
             'emergency_contact_name' => 'required|string|max:255',
             'emergency_contact_phone' => 'required|string|max:30',
             'emergency_contact_relationship' => 'required|string|max:100',
+            'emergency_contact_name2' => 'nullable|string|max:255',
+            'emergency_contact_phone2' => 'nullable|string|max:30',
+            'emergency_contact_relationship2' => 'nullable|string|max:100',
 
             'tax_file_number' => 'required|string|max:100',
 
@@ -975,6 +995,9 @@ public function updateEmployeeProfile(Request $request)
             'emergency_contact_name' => $request->emergency_contact_name,
             'emergency_contact_phone' => $request->emergency_contact_phone,
             'emergency_contact_relationship' => $request->emergency_contact_relationship,
+            'emergency_contact_name2' => $request->emergency_contact_name2,
+            'emergency_contact_phone2' => $request->emergency_contact_phone2,
+            'emergency_contact_relationship2' => $request->emergency_contact_relationship2,
 
             'tax_file_number' => $encryptedTFN,
 

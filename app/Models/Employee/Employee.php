@@ -66,6 +66,9 @@ class Employee extends Model
         'is_pr',
         'account_name',
         'bank_name',
+        'emergency_contact_name2',
+        'emergency_contact_phone2',
+        'emergency_contact_relationship2',
     ];
 
     protected $casts = [
