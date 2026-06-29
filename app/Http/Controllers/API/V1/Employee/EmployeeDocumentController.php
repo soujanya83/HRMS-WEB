@@ -435,6 +435,7 @@ class EmployeeDocumentController extends Controller
         try {
 
             $validated = $request->validate([
+                'organization_id' => 'required|integer',
                 'employee_id'   => 'required|exists:employees,id',
                 'document_type' => 'required|string|max:190',
                 'file_name'     => 'nullable|string|max:191',
