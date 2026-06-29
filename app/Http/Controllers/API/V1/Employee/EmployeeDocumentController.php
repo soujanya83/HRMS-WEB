@@ -11,11 +11,20 @@ use Aws\Textract\TextractClient;
 
 class EmployeeDocumentController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $request->validate([
+            'organization_id' => 'required|integer'
+        ]);
+
+        $organizationId = $request->query('organization_id');
+
         return response()->json([
             'success' => true,
-            'data' => EmployeeDocument::with('employee')->orderBy('issue_date', 'desc')->get()
+            'data' => EmployeeDocument::with('employee')
+                ->where('organization_id', $organizationId)
+                ->orderBy('issue_date', 'desc')
+                ->get()
         ]);
     }
 
@@ -508,11 +517,23 @@ class EmployeeDocumentController extends Controller
                     );
                     
 
+                    // Default values
+                    $validated['verify'] = 'pending';
+                    $validated['verified_by'] = null;
+                    $validated['verified_by_ai'] = 'no';
+
+                    // AI verification passed
                     if (
-                    !$verification['match'] || $verification['confidence'] < 90) {
+                        $verification['match'] &&
+                        $verification['confidence'] >= 90
+                    ) {
+                        $validated['verified_by_ai'] = 'yes';
+                    }
+
+                    // AI verification failed
+                    else {
 
                         if (!$forceSave) {
-
                             return response()->json([
                                 'success' => false,
                                 'message' => 'Uploaded document does not match selected document type or confidence is below 90%.',
@@ -525,15 +546,10 @@ class EmployeeDocumentController extends Controller
                             ], 422);
                         }
 
-                        $validated['verify'] = 'pending';
-                        $validated['verified_by'] = null;
-
-
-                    } else {
-
-                        $validated['verify'] = 'approved';
-                        $validated['verified_by'] = 0;
-
+                        // Force save enabled:
+                        // verify = pending
+                        // verified_by = null
+                        // verified_by_ai = no
                     }
  
 
@@ -565,8 +581,7 @@ class EmployeeDocumentController extends Controller
 
                 'force_save' => $forceSave,
 
-                'verification_status' => $doc->verify,
-                'verified_by' => $doc->verified_by,
+                'verified_by_ai' => $doc->verified_by_ai,
 
                 'data' => $doc,
                 
