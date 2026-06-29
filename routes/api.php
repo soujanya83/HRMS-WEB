@@ -564,6 +564,12 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
             Route::patch('/{id}', [EmployeeDocumentController::class, 'update']);
             Route::delete('/{id}', [EmployeeDocumentController::class, 'destroy']);
             Route::get('/by-employee/{employeeId}', [EmployeeDocumentController::class, 'byEmployee']);
+            
+            Route::get('/employee-documents/types',[EmployeeDocumentController::class, 'documentTypes']);
+            Route::patch('/employee-documents/{id}/verify',[EmployeeDocumentController::class, 'verifyDocument']);
+            Route::patch('/employee-documents/{id}/expiry-date',[EmployeeDocumentController::class, 'updateExpiryDate']);
+            Route::get('/employee-documents/stats',[EmployeeDocumentController::class, 'stats']);
+
         });
 
         // Employee Exit

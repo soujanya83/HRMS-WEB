@@ -4,10 +4,15 @@ namespace App\Models\Employee;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Models\User;
 
 class EmployeeDocument extends Model
 {
     use HasFactory;
     protected $fillable = ['organization_id', 'employee_id', 'document_type', 'file_name', 'file_url', 'issue_date', 'expiry_date','verify','verified_by'];
     public function employee() { return $this->belongsTo(Employee::class); }
+    public function verifier()
+{
+    return $this->belongsTo(User::class, 'verified_by');
+}
 }

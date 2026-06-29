@@ -11,26 +11,163 @@ use Aws\Textract\TextractClient;
 
 class EmployeeDocumentController extends Controller
 {
+    // public function index(Request $request)
+    // {
+    //     $request->validate([
+    //         'organization_id' => 'required|integer'
+    //     ]);
+
+    //     $organizationId = $request->query('organization_id');
+
+    //     return response()->json([
+    //         'success' => true,
+    //         'data' => EmployeeDocument::with('employee')
+    //             ->where('organization_id', $organizationId)
+    //             ->orderBy('issue_date', 'desc')
+    //             ->get()
+    //     ]);
+    // }
+
+
     public function index(Request $request)
-    {
-        $request->validate([
-            'organization_id' => 'required|integer'
-        ]);
+{
+    $request->validate([
+        'organization_id' => 'required|exists:organizations,id',
+        'employee_id'     => 'nullable|exists:employees,id',
+        'document_type'   => 'nullable|string',
+        'verify'          => 'nullable|boolean',
+        'expiry_filter'   => 'nullable|in:expired,expiring_soon,no_expiry,latest',
+        'per_page'        => 'nullable|integer|min:1|max:100',
+    ]);
 
-        $organizationId = $request->query('organization_id');
+    $query = EmployeeDocument::with([
+        'employee:id,first_name,last_name,email','verifier:id,name,email'
+    ])
+        ->where('organization_id', $request->organization_id);
 
-        return response()->json([
-            'success' => true,
-            'data' => EmployeeDocument::with('employee')
-                ->where('organization_id', $organizationId)
-                ->orderBy('issue_date', 'desc')
-                ->get()
-        ]);
+    /*
+    |--------------------------------------------------------------------------
+    | Employee Filter
+    |--------------------------------------------------------------------------
+    */
+    if ($request->filled('employee_id')) {
+        $query->where('employee_id', $request->employee_id);
     }
+
+
+    if ($request->filled('search')) {
+
+    $query->whereHas('employee', function ($q) use ($request) {
+
+        $q->where('first_name', 'like', "%{$request->search}%")
+          ->orWhere('last_name', 'like', "%{$request->search}%");
+    });
+
+}
+
+    /*
+    |--------------------------------------------------------------------------
+    | Document Type Filter
+    |--------------------------------------------------------------------------
+    */
+    if ($request->filled('document_type')) {
+        $query->where('document_type', $request->document_type);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Verified Filter
+    |--------------------------------------------------------------------------
+    */
+    if ($request->has('verify')) {
+        $query->where('verify', $request->verify);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Expiry Filters
+    |--------------------------------------------------------------------------
+    */
+    if ($request->filled('expiry_filter')) {
+
+        switch ($request->expiry_filter) {
+
+            case 'expired':
+                $query->whereNotNull('expiry_date')
+                    ->whereDate('expiry_date', '<', now());
+                break;
+
+            case 'expiring_soon':
+                $query->whereBetween(
+                    'expiry_date',
+                    [now(), now()->addDays(30)]
+                );
+                break;
+
+            case 'no_expiry':
+                $query->whereNull('expiry_date');
+                break;
+
+            case 'latest':
+                // handled in ordering section
+                break;
+        }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Sorting
+    |--------------------------------------------------------------------------
+    | NULL expiry dates should always come last
+    |--------------------------------------------------------------------------
+    */
+
+    $query->orderByRaw('expiry_date IS NULL')
+        ->orderBy('expiry_date', 'asc');
+
+
+     
+        $allowedSorts = [
+    'expiry_date',
+    'issue_date',
+    'document_type',
+    'verify'
+];
+
+$sortBy = $request->sort_by ?? 'expiry_date';
+
+$sortOrder = $request->sort_order ?? 'asc';
+
+if (in_array($sortBy, $allowedSorts)) {
+
+    $query->orderBy($sortBy, $sortOrder);
+
+}
+
+    /*
+    |--------------------------------------------------------------------------
+    | NULL verify values last
+    |--------------------------------------------------------------------------
+    */
+
+    $query->orderByRaw('verify IS NULL');
+
+    $documents = $query->paginate(
+        $request->per_page ?? 15
+    );
+
+    return response()->json([
+        'status' => true,
+        'message' => 'Documents fetched successfully.',
+        'data' => $documents
+    ]);
+}
+
+
 
     public function show($id)
     {
-        $doc = EmployeeDocument::with('employee')->findOrFail($id);
+        $doc = EmployeeDocument::with(['employee', 'verifier'])->findOrFail($id);
         return response()->json(['success' => true, 'data' => $doc]);
     }
 
@@ -724,5 +861,117 @@ class EmployeeDocumentController extends Controller
             ]);
         }
     }
+
+
+
+    public function documentTypes(Request $request)
+{
+    $request->validate([
+        'organization_id' => 'required|exists:organizations,id'
+    ]);
+
+    $types = EmployeeDocument::where(
+        'organization_id',
+        $request->organization_id
+    )
+        ->distinct()
+        ->pluck('document_type');
+
+    return response()->json([
+        'status' => true,
+        'data' => $types
+    ]);
+}
+
+
+   
+    public function verifyDocument(Request $request, $id)
+{
+    $request->validate([
+        'verify' => 'required|boolean',
+        'verified_by' => 'required|exists:employees,id'
+    ]);
+
+    $document = EmployeeDocument::findOrFail($id);
+
+    $document->update([
+        'verify' => $request->verify,
+        'verified_by' => $request->verified_by
+    ]);
+
+    return response()->json([
+        'status' => true,
+        'message' => 'Document verification updated successfully.',
+        'data' => $document
+    ]);
+}
+
+
+public function updateExpiryDate(Request $request, $id)
+{
+    $request->validate([
+        'expiry_date' => 'nullable|date'
+    ]);
+
+    $document = EmployeeDocument::findOrFail($id);
+
+    $document->update([
+        'expiry_date' => $request->expiry_date
+    ]);
+
+    return response()->json([
+        'status' => true,
+        'message' => 'Expiry date updated successfully.',
+        'data' => $document
+    ]);
+}
+
+
+  public function stats(Request $request)
+{
+    $request->validate([
+        'organization_id' => 'required|exists:organizations,id'
+    ]);
+
+    $query = EmployeeDocument::where(
+        'organization_id',
+        $request->organization_id
+    );
+
+    return response()->json([
+        'status' => true,
+        'data' => [
+            'total_documents' => $query->count(),
+
+            'verified_documents' => (clone $query)
+                ->where('verify', 1)
+                ->count(),
+
+            'unverified_documents' => (clone $query)
+                ->where('verify', 0)
+                ->count(),
+
+            'null_verify_documents' => (clone $query)
+                ->whereNull('verify')
+                ->count(),
+
+            'expired_documents' => (clone $query)
+                ->whereDate('expiry_date', '<', now())
+                ->count(),
+
+            'expiring_in_30_days' => (clone $query)
+                ->whereBetween(
+                    'expiry_date',
+                    [now(), now()->addDays(30)]
+                )
+                ->count(),
+
+            'no_expiry_documents' => (clone $query)
+                ->whereNull('expiry_date')
+                ->count(),
+        ]
+    ]);
+}
+   
 
 }
