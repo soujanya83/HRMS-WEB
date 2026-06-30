@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use GuzzleHttp\Client;
 use Aws\Textract\TextractClient;
+use Illuminate\Support\Facades\Validator;
 
 class EmployeeDocumentController extends Controller
 {
@@ -781,6 +782,47 @@ if (in_array($sortBy, $allowedSorts)) {
         if ($doc->file_url) Storage::disk('public')->delete(str_replace('/storage/', '', $doc->file_url));
         $doc->delete();
         return response()->json(['success' => true, 'message' => 'Document deleted']);
+    }
+
+    public function changeStatus(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'document_id' => 'required|exists:employee_documents,id',
+            'status'      => 'required|in:approved,rejected',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed.',
+                'errors'  => $validator->errors(),
+            ], 422);
+        }
+
+        $document = EmployeeDocument::findOrFail($request->document_id);
+
+        if ($request->status === 'approved') {
+
+            $document->verify = 'approved';
+            $document->verified_by = auth()->id();
+            $document->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Document approved successfully.',
+                'data'    => $document,
+            ]);
+        }
+
+        // Rejected
+        $document->verify = 'rejected';
+        $document->verified_by = null;
+        $document->save();
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Document rejected. Please contact Admin or upload a new document for verification.',
+        ]);
     }
 
     public function byEmployee($employeeId)

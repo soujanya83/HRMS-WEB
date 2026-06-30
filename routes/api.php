@@ -134,8 +134,10 @@ Route::post('/employee/document/update-dates', [EmployeeDocumentController::clas
 Route::get('/employee/{employee_id}/documents', [EmployeeDocumentController::class, 'getEmployeeDocuments']);
 Route::get('/employee/document/{document_id}', [EmployeeDocumentController::class, 'getDocumentById']);
 
-
-
+    // Update status from pending to approved
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('/employee/document/changestatus', [EmployeeDocumentController::class, 'changeStatus']);
+    });
 
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
