@@ -42,7 +42,7 @@ class EmployeeDocumentController extends Controller
     ]);
 
     $query = EmployeeDocument::with([
-        'employee:id,first_name,last_name,email','verifier:id,name,email'
+        'employee:id,first_name,last_name,personal_email','verifier:id,name,email'
     ])
         ->where('organization_id', $request->organization_id);
 
