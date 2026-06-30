@@ -559,6 +559,7 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
 
         // Employee Documents
         Route::prefix('employee-documents')->group(function () {
+                        Route::get('/types',[EmployeeDocumentController::class, 'documentTypes']);
             Route::get('/', [EmployeeDocumentController::class, 'index']);
             Route::post('/', [EmployeeDocumentController::class, 'store']);
             Route::get('/{id}', [EmployeeDocumentController::class, 'show']);
@@ -567,7 +568,6 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
             Route::delete('/{id}', [EmployeeDocumentController::class, 'destroy']);
             Route::get('/by-employee/{employeeId}', [EmployeeDocumentController::class, 'byEmployee']);
             
-            Route::get('/types',[EmployeeDocumentController::class, 'documentTypes']);
             Route::patch('/employee-documents/{id}/verify',[EmployeeDocumentController::class, 'verifyDocument']);
             Route::patch('/employee-documents/{id}/expiry-date',[EmployeeDocumentController::class, 'updateExpiryDate']);
             Route::get('/employee-documents/stats',[EmployeeDocumentController::class, 'stats']);
