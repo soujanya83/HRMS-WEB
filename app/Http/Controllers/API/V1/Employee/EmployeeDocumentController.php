@@ -36,7 +36,7 @@ class EmployeeDocumentController extends Controller
         'organization_id' => 'required|exists:organizations,id',
         'employee_id'     => 'nullable|exists:employees,id',
         'document_type'   => 'nullable|string',
-        'verify'          => 'nullable|boolean',
+        'verify'          => 'nullable|in:pending,approved,rejected',
         'expiry_filter'   => 'nullable|in:expired,expiring_soon,no_expiry,latest',
         'per_page'        => 'nullable|integer|min:1|max:100',
     ]);
@@ -930,7 +930,7 @@ if (in_array($sortBy, $allowedSorts)) {
     public function verifyDocument(Request $request, $id)
 {
     $request->validate([
-        'verify' => 'required|boolean',
+        'verify' => 'required|in:approved,rejected',
         'verified_by' => 'required|exists:employees,id'
     ]);
 
@@ -986,11 +986,11 @@ public function updateExpiryDate(Request $request, $id)
             'total_documents' => $query->count(),
 
             'verified_documents' => (clone $query)
-                ->where('verify', 1)
+                ->where('verify', 'approved')
                 ->count(),
 
             'unverified_documents' => (clone $query)
-                ->where('verify', 0)
+                ->where('verify', 'rejected')
                 ->count(),
 
             'null_verify_documents' => (clone $query)
