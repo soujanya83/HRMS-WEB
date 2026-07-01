@@ -76,6 +76,7 @@ use App\Http\Controllers\API\V1\FormMasterController;
 use App\Http\Controllers\API\V1\DocumentMasterController;
 use App\Http\Controllers\API\V1\PolicyMasterController;
 use App\Http\Controllers\API\V1\EmployeePolicyMasterController;
+use App\Http\Controllers\API\V1\EmploymentContractFormController;
 
 use App\Http\Controllers\API\V1\{
     RoleController,
@@ -563,7 +564,7 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
             Route::patch('/employee-documents/{id}/verify',[EmployeeDocumentController::class, 'verifyDocument']);
             Route::patch('/employee-documents/{id}/expiry-date',[EmployeeDocumentController::class, 'updateExpiryDate']);
             Route::get('/employee-documents/stats',[EmployeeDocumentController::class, 'stats']);
-            
+
             Route::get('/', [EmployeeDocumentController::class, 'index']);
             Route::post('/', [EmployeeDocumentController::class, 'store']);
             Route::get('/{id}', [EmployeeDocumentController::class, 'show']);
@@ -894,12 +895,22 @@ Route::prefix('child-safe-conduct')->group(function () {
 });
 
 
+
 Route::prefix('staff-inductions')->group(function () {
     Route::post('/', [StaffInductionController::class, 'store']);
     Route::get('/{id}', [StaffInductionController::class, 'show']);
     Route::put('/{id}', [StaffInductionController::class, 'update']);
     Route::delete('/{id}', [StaffInductionController::class, 'destroy']);
     Route::get('/employee/{employeeId}', [StaffInductionController::class, 'getByEmployee']);
+});
+
+
+Route::prefix('employment-contract')->group(function () {
+    Route::post('/', [EmploymentContractFormController::class, 'store']);
+    Route::get('/{id}', [EmploymentContractFormController::class, 'show']);
+    Route::put('/{id}', [EmploymentContractFormController::class, 'update']);
+    Route::delete('/{id}', [EmploymentContractFormController::class, 'destroy']);
+    Route::get('/employee/{employeeId}', [EmploymentContractFormController::class, 'getByEmployee']);
 });
 
 
