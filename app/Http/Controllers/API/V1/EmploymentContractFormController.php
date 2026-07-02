@@ -42,6 +42,8 @@ class EmploymentContractFormController extends Controller
             'acceptance_name' => 'nullable|string',
             'contract_signature_base64' => 'nullable|string',
             'contract_signature_date' => 'nullable|date',
+            'head_of_operations_signature_base64' => 'nullable|string',
+            'head_of_operations_date' => 'nullable|date',
         ]);
 
         // Process Disclosure Signature
@@ -55,6 +57,12 @@ class EmploymentContractFormController extends Controller
             $validatedData['contract_signature_path'] = $this->saveSignature($validatedData['contract_signature_base64']);
         }
         unset($validatedData['contract_signature_base64']);
+
+        // Process Head of Operations Signature
+        if (!empty($validatedData['head_of_operations_signature_base64'])) {
+            $validatedData['head_of_operations_signature_path'] = $this->saveSignature($validatedData['head_of_operations_signature_base64']);
+        }
+        unset($validatedData['head_of_operations_signature_base64']);
 
         $form = EmploymentContractForm::updateOrCreate(
             ['employee_id' => $validatedData['employee_id']],
@@ -86,6 +94,8 @@ class EmploymentContractFormController extends Controller
             'acceptance_name' => 'sometimes|string|nullable',
             'contract_signature_base64' => 'sometimes|string|nullable',
             'contract_signature_date' => 'sometimes|date|nullable',
+            'head_of_operations_signature_base64' => 'sometimes|string|nullable',
+            'head_of_operations_date' => 'sometimes|date|nullable',
         ]);
 
         // Update Disclosure Signature
@@ -106,6 +116,15 @@ class EmploymentContractFormController extends Controller
         }
         unset($validatedData['contract_signature_base64']);
 
+        // Update Head of Operations Signature
+        if (!empty($validatedData['head_of_operations_signature_base64']) && !str_starts_with($validatedData['head_of_operations_signature_base64'], 'http')) {
+            if ($form->head_of_operations_signature_path) {
+                Storage::disk('public')->delete($form->head_of_operations_signature_path);
+            }
+            $validatedData['head_of_operations_signature_path'] = $this->saveSignature($validatedData['head_of_operations_signature_base64']);
+        }
+        unset($validatedData['head_of_operations_signature_base64']);
+
         $form->update($validatedData);
 
         return response()->json($form);
@@ -122,7 +141,9 @@ class EmploymentContractFormController extends Controller
         if ($form->contract_signature_path) {
             Storage::disk('public')->delete($form->contract_signature_path);
         }
-
+        if ($form->head_of_operations_signature_path) {
+            Storage::disk('public')->delete($form->head_of_operations_signature_path);
+        }
         $form->delete();
 
         return response()->json(['message' => 'Employment Contract form deleted successfully']);

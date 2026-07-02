@@ -26,17 +26,21 @@ class EmploymentContractForm extends Model
         'acceptance_name',
         'contract_signature_path',
         'contract_signature_date',
+        'head_of_operations_signature_path',
+        'head_of_operations_date',
     ];
 
     protected $casts = [
         'contract_date' => 'date',
         'disclosure_date' => 'date',
         'contract_signature_date' => 'date',
+        'head_of_operations_date' => 'date',
     ];
 
     protected $appends = [
         'disclosure_signature_url',
-        'contract_signature_url'
+        'contract_signature_url',
+        'head_of_operations_signature_url'
     ];
 
     public function getDisclosureSignatureUrlAttribute()
@@ -47,5 +51,10 @@ class EmploymentContractForm extends Model
     public function getContractSignatureUrlAttribute()
     {
         return $this->contract_signature_path ? asset('storage/' . $this->contract_signature_path) : null;
+    }
+
+    public function getHeadOfOperationsSignatureUrlAttribute()
+    {
+        return $this->head_of_operations_signature_path ? asset('storage/' . $this->head_of_operations_signature_path) : null;
     }
 }
