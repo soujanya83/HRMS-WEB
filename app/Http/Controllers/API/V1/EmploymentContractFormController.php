@@ -44,6 +44,9 @@ class EmploymentContractFormController extends Controller
             'contract_signature_date' => 'nullable|date',
             'head_of_operations_signature_base64' => 'nullable|string',
             'head_of_operations_date' => 'nullable|date',
+            'disclosureStrike1' => 'nullable|boolean',
+            'disclosureStrike2' => 'nullable|boolean',
+            'disclosureStrike3' => 'nullable|boolean',
         ]);
 
         // Process Disclosure Signature
@@ -84,7 +87,9 @@ class EmploymentContractFormController extends Controller
             
             'disclosure_date' => 'sometimes|date|nullable',
             'disclosure_signature_base64' => 'sometimes|string|nullable',
-            
+            'disclosureStrike1' => 'sometimes|boolean|nullable',
+            'disclosureStrike2' => 'sometimes|boolean|nullable',
+            'disclosureStrike3' => 'sometimes|boolean|nullable',
             'employment_type' => 'sometimes|string|nullable',
             'hours_per_week' => 'sometimes|string|nullable',
             'commencement_date' => 'sometimes|string|nullable',

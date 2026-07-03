@@ -28,6 +28,9 @@ class EmploymentContractForm extends Model
         'contract_signature_date',
         'head_of_operations_signature_path',
         'head_of_operations_date',
+        'disclosureStrike1',
+        'disclosureStrike2',
+        'disclosureStrike3',
     ];
 
     protected $casts = [
@@ -35,6 +38,9 @@ class EmploymentContractForm extends Model
         'disclosure_date' => 'date',
         'contract_signature_date' => 'date',
         'head_of_operations_date' => 'date',
+        'disclosureStrike1' => 'boolean',
+        'disclosureStrike2' => 'boolean',
+        'disclosureStrike3' => 'boolean',
     ];
 
     protected $appends = [
