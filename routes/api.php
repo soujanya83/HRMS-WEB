@@ -77,6 +77,7 @@ use App\Http\Controllers\API\V1\DocumentMasterController;
 use App\Http\Controllers\API\V1\PolicyMasterController;
 use App\Http\Controllers\API\V1\EmployeePolicyMasterController;
 use App\Http\Controllers\API\V1\EmploymentContractFormController;
+use App\Http\Controllers\API\V1\NotificationController;
 
 use App\Http\Controllers\API\V1\{
     RoleController,
@@ -170,6 +171,11 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
 
     
     Route::middleware('auth:sanctum')->group(function () {
+
+
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::post('/notifications/{id}/mark-as-read', [NotificationController::class, 'markAsRead']);
+
 
          Route::get('/xero/connect', [XeroConnectionController::class, 'connect']);
 
