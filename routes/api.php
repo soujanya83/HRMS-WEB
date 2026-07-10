@@ -78,6 +78,7 @@ use App\Http\Controllers\API\V1\PolicyMasterController;
 use App\Http\Controllers\API\V1\EmployeePolicyMasterController;
 use App\Http\Controllers\API\V1\EmploymentContractFormController;
 use App\Http\Controllers\API\V1\NotificationController;
+use App\Http\Controllers\API\V1\NotificationSettingController;
 
 use App\Http\Controllers\API\V1\{
     RoleController,
@@ -175,6 +176,10 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
 
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::post('/notifications/{id}/mark-as-read', [NotificationController::class, 'markAsRead']);
+
+    Route::get('/notification-settings', [NotificationSettingController::class, 'index']);
+    Route::post('/notification-settings/sync', [NotificationSettingController::class, 'syncRoles']);
+    Route::post('/notification-settings/mute', [NotificationSettingController::class, 'muteRole']);
 
 
          Route::get('/xero/connect', [XeroConnectionController::class, 'connect']);

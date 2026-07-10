@@ -1169,9 +1169,23 @@ if (in_array($sortBy, $allowedSorts)) {
             // Custom dynamic message
             $aiStatus = $doc->verified_by_ai === 'yes' ? ' (AI Verified)' : ' (Needs Manual Verification)';
             
-            NotificationService::sendToOrganizationRoles(
+            // NotificationService::sendToOrganizationRoles(
+            //     $request->organization_id,
+            //     ['superadmin', 'Center Admin'], // Jinko ye dikhana hai unke roles
+            //     'document_upload',
+            //     'New Document Uploaded',
+            //     "{$empName} has uploaded a new {$request->document_type}.{$aiStatus}",
+            //     $employee->user_id ?? null, // Action creator
+            //     [
+            //         'document_id' => $doc->id,
+            //         'employee_id' => $employee->id,
+            //         'route_link' => "/employees/{$employee->id}/documents" // React frontend ke liye route hint
+            //     ]
+            // );
+
+            NotificationService::sendDynamic(
                 $request->organization_id,
-                ['superadmin', 'Center Admin'], // Jinko ye dikhana hai unke roles
+                // (Roles ka array yahan se hata diya gaya hai)
                 'document_upload',
                 'New Document Uploaded',
                 "{$empName} has uploaded a new {$request->document_type}.{$aiStatus}",
@@ -1182,6 +1196,8 @@ if (in_array($sortBy, $allowedSorts)) {
                     'route_link' => "/employees/{$employee->id}/documents" // React frontend ke liye route hint
                 ]
             );
+
+
         } catch (\Exception $e) {
             // Notification fail hone par main flow break nahi hona chahiye
             \Log::error('Failed to send document upload notification: ' . $e->getMessage());
