@@ -404,6 +404,338 @@ if (in_array($sortBy, $allowedSorts)) {
         }
     }
 
+    private function verifyEmployeeIdentityWithAI(string $ocrText, Employee $employee): array
+    {
+        $client = new Client();
+
+        try {
+
+            $employeeName = trim(implode(' ', array_filter([
+                $employee->first_name,
+                $employee->middle_name,
+                $employee->last_name,
+            ])));
+
+            $employeeDob = $employee->date_of_birth
+                ? date('Y-m-d', strtotime($employee->date_of_birth))
+                : null;
+
+
+            $response = $client->post(
+                'https://api.deepseek.com/chat/completions',
+                [
+
+                    'headers' => [
+                        'Authorization' => 'Bearer ' . config('services.deepseek.api_key'),
+                        'Content-Type' => 'application/json',
+                    ],
+
+                    'json' => [
+
+                        'model' => 'deepseek-chat',
+
+                        'messages' => [
+
+                            [
+                                'role' => 'system',
+                                'content' => 'You are an HR identity verification expert.'
+                            ],
+
+                            [
+
+                                'role' => 'user',
+
+                                'content' => <<<TEXT
+
+                                                Identity Verification Rules
+
+
+
+                                                    Employee Name:
+
+                                                    {$employeeName}
+
+
+
+                                                    Employee DOB:
+
+                                                    {$employeeDob}
+
+
+
+                                                    ------------------------------------------------
+
+
+
+                                                    OCR TEXT
+
+
+
+                                                    {$ocrText}
+
+
+
+                                                    ------------------------------------------------
+
+
+
+                                                    Your task is to determine whether the uploaded document belongs to this employee.
+
+
+
+                                                    Step 1
+
+                                                    Extract the FULL NAME from the OCR.
+
+
+
+                                                    Step 2
+
+                                                    Extract the DATE OF BIRTH if it exists.
+
+
+
+                                                    Step 3
+
+                                                    Compare with the employee details.
+
+
+
+                                                    NAME MATCHING RULES
+
+
+
+                                                    Treat the following as the SAME PERSON:
+
+
+
+                                                    Mohammad
+
+                                                    Mohd.
+
+                                                    Md.
+
+                                                    Mo.
+
+
+
+                                                    Abdul
+
+                                                    Abd.
+
+
+
+                                                    Muhammad
+
+                                                    Mohammad
+
+
+
+                                                    Ignore:
+
+
+
+                                                    • Upper/lower case
+
+                                                    • Extra spaces
+
+                                                    • Dots
+
+                                                    • Commas
+
+                                                    • Hyphens
+
+                                                    • Minor OCR spelling mistakes
+
+                                                    • Middle initials
+
+                                                    • Missing middle names
+
+
+
+                                                    Examples that MUST MATCH
+
+
+
+                                                    Mohammad Adil Ali
+
+                                                    Mohd Adil Ali
+
+                                                    Md Adil Ali
+
+                                                    Mo. Adil Ali
+
+                                                    Mohammad A. Ali
+
+
+
+                                                    Examples that MUST NOT MATCH
+
+                                                    Robert Testuser
+
+                                                    John Smith
+
+                                                    Adil Khan
+
+                                                    Ali Mohammad (when employee is Mohammad Ali)
+
+                                                    The order of first name and last name is important unless it is a common cultural variation.
+
+
+
+                                                    DOB RULES
+
+
+
+                                                    Examples:
+
+
+
+                                                    28/10/1975
+
+
+
+                                                    1975-10-28
+
+
+
+                                                    28-Oct-1975
+
+
+
+                                                    should be treated as SAME date.
+
+                                                    
+
+
+
+                                                    If the document contains a DOB,
+
+                                                    it MUST match the employee DOB.
+
+
+
+                                                    If the document does NOT contain a DOB,
+
+                                                    do NOT reduce the confidence.
+
+
+
+                                                    If the document contains a DOB and it is different from the employee DOB,
+                                                    the confidence MUST be below 70 even if the name matches perfectly.
+
+                                                    If the document does not contain a DOB,
+                                                    evaluate only the name.
+
+                                                    Never invent or assume a DOB.
+
+
+
+                                                    DECISION RULES
+
+
+
+                                                    1. Name matches + DOB matches
+
+                                                    -> confidence 95-100
+
+
+
+                                                    2. Name matches + DOB missing
+
+                                                    -> confidence 95-100
+
+
+
+                                                    3. Name matches + DOB different
+
+                                                    -> confidence below 70
+
+
+
+                                                    4. Name different
+
+                                                    -> confidence below 70
+
+
+
+                                                    Return ONLY valid JSON.
+
+                                                    Never return markdown.
+                                                    Never return explanations.
+                                                    Never wrap JSON inside ``` blocks.
+
+
+
+                                                    {
+
+                                                        "document_name":"",
+
+                                                        "document_dob":null,
+
+                                                        "confidence":98,
+
+                                                        "reason":"..."
+
+                                                    }
+
+                                                TEXT
+
+                            ]
+
+                        ],
+
+                        'temperature' => 0,
+
+                    ],
+
+                    'timeout' => 30
+
+                ]
+            );
+
+            $body = json_decode($response->getBody(), true);
+
+            $content = trim(
+                $body['choices'][0]['message']['content'] ?? ''
+            );
+
+            $data = json_decode($content, true);
+
+            return [
+
+                'confidence' => (int)($data['confidence'] ?? 0),
+
+                'document_name' => $data['document_name'] ?? null,
+
+                'document_dob' => $data['document_dob'] ?? null,
+
+                'reason' => $data['reason'] ?? 'No reason returned.'
+
+            ];
+
+        } catch (\Exception $e) {
+
+            \Log::error('DeepSeek Employee Identity Verification', [
+
+                'error' => $e->getMessage()
+
+            ]);
+
+            return [
+
+                'confidence' => 0,
+
+                'document_name' => null,
+
+                'document_dob' => null,
+
+                'reason' => 'AI verification failed.'
+
+            ];
+        }
+    }
+
 
     // public function store(Request $request)
     // {
@@ -589,13 +921,40 @@ if (in_array($sortBy, $allowedSorts)) {
             $validated['file_url'] = Storage::url($path);
 
             $ocrText = '';
+            $employee = Employee::withTrashed()
+                ->with('user')
+                ->find($request->employee_id);
 
+            if (!$employee) {
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Employee not found.',
+                ], 404);
+            }
+
+            if ($employee->trashed()) {
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This employee has been deleted. Document upload is not allowed.',
+                ], 422);
+            }
+        
             $forceSave = filter_var($request->force_save, FILTER_VALIDATE_BOOLEAN);
 
             $verification = [
                 'match' => false,
                 'predicted_type' => null,
                 'confidence' => 0,
+            ];
+
+            
+            $nameVerification = [
+                'confidence' => 0,
+                'document_name' => null,
+                'document_dob' => null,
+                'reason' => null,
             ];
             // Run OCR only when one of the dates is missing
             if (empty($request->issue_date) || empty($request->expiry_date)) {
@@ -639,6 +998,55 @@ if (in_array($sortBy, $allowedSorts)) {
                         }
                     }
 
+                                /*
+                            |--------------------------------------------------------------------------
+                            | Verify Employee Identity
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $nameVerification = $this->verifyEmployeeIdentityWithAI(
+                                $ocrText,
+                                $employee
+                            );
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | Hard Reject
+                            |--------------------------------------------------------------------------
+                            */
+
+                            if ($nameVerification['confidence'] < 70) {
+
+                                return response()->json([
+
+                                    'success' => false,
+
+                                    'message' =>
+                                        'Identity verification failed.',
+
+                                    'reason' =>
+                                    $nameVerification['reason'],
+
+                                    'employee_name' =>
+                                        $employee->user->name,
+
+                                    'employee_dob' =>
+                                        $employee->date_of_birth,
+
+                                    'document_name' =>
+                                        $nameVerification['document_name'],
+
+                                    'document_dob' =>
+                                        $nameVerification['document_dob'],
+
+                                    'identity_confidence' =>
+                                        $nameVerification['confidence'],
+
+                                    'force_save' => false
+
+                                ], 422);
+                            }
+
                 } catch (\Throwable $e) {
 
                     \Log::error('Textract failed', [
@@ -661,34 +1069,69 @@ if (in_array($sortBy, $allowedSorts)) {
                     $validated['verified_by'] = null;
                     $validated['verified_by_ai'] = 'no';
 
-                    // AI verification passed
-                    if (
-                        $verification['match'] &&
-                        $verification['confidence'] >= 90
-                    ) {
-                        $validated['verified_by_ai'] = 'yes';
-                    }
+                    /*
+                    |--------------------------------------------------------------------------
+                    | Document Type Verification
+                    |--------------------------------------------------------------------------
+                    */
 
-                    // AI verification failed
-                    else {
+                    if ($verification['match'] && $verification['confidence'] >= 90) {
+
+                        /*
+                        |--------------------------------------------------------------------------
+                        | Identity also matched
+                        |--------------------------------------------------------------------------
+                        */
+
+                        if ($nameVerification['confidence'] >= 95) {
+
+                            $validated['verified_by_ai'] = 'yes';
+
+                        } else {
+
+                            // Identity confidence is 70-94
+                            $validated['verified_by_ai'] = 'no';
+                        }
+
+                    } else {
+
+                        /*
+                        |--------------------------------------------------------------------------
+                        | Wrong Document Type
+                        |--------------------------------------------------------------------------
+                        */
 
                         if (!$forceSave) {
+
                             return response()->json([
+
                                 'success' => false,
-                                'message' => 'Uploaded document does not match selected document type or confidence is below 90%.',
+
+                                'message' => 'Uploaded document does not match the selected document type.',
 
                                 'selected_type' => $request->document_type,
+
                                 'detected_type' => $verification['predicted_type'],
+
                                 'detected_type_confidence' => $verification['confidence'],
 
-                                'force_save' => false,
+                                // 'employee_name' => $employee->user->name,
+
+                                // 'employee_dob' => $employee->date_of_birth,
+
+                                // 'document_name' => $nameVerification['document_name'],
+
+                                // 'document_dob' => $nameVerification['document_dob'],
+
+                                // 'identity_confidence' => $nameVerification['confidence'],
+
+                                'force_save' => false
+
                             ], 422);
                         }
 
-                        // Force save enabled:
-                        // verify = pending
-                        // verified_by = null
-                        // verified_by_ai = no
+                        // force_save=true
+                        // Save with verified_by_ai = no
                     }
  
 
@@ -721,6 +1164,11 @@ if (in_array($sortBy, $allowedSorts)) {
                 'force_save' => $forceSave,
 
                 'verified_by_ai' => $doc->verified_by_ai,
+                // 'identity_confidence' => $nameVerification['confidence'],
+                // 'identity_reason' => $nameVerification['reason'],
+                // 'document_name' => $nameVerification['document_name'],
+
+                // 'document_dob' => $nameVerification['document_dob'],
 
                 'data' => $doc,
                 
