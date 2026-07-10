@@ -9,6 +9,8 @@ use Illuminate\Validation\ValidationException;
 use GuzzleHttp\Client;
 use Aws\Textract\TextractClient;
 use Illuminate\Support\Facades\Validator;
+use App\Services\NotificationService;
+
 
 class EmployeeDocumentController extends Controller
 {
@@ -1152,6 +1154,41 @@ if (in_array($sortBy, $allowedSorts)) {
             }
 
             $doc = EmployeeDocument::create($validated);
+
+
+            
+
+            // ==========================================
+        // ADD NOTIFICATION LOGIC HERE
+        // ==========================================
+        try {
+            // Employee details fetch karein taaki naam dikha sakein
+            $employee = \App\Models\Employee\Employee::find($request->employee_id);
+            $empName = $employee ? $employee->first_name . ' ' . $employee->last_name : 'An Employee';
+
+            // Custom dynamic message
+            $aiStatus = $doc->verified_by_ai === 'yes' ? ' (AI Verified)' : ' (Needs Manual Verification)';
+            
+            NotificationService::sendToOrganizationRoles(
+                $request->organization_id,
+                ['superadmin', 'Center Admin'], // Jinko ye dikhana hai unke roles
+                'document_upload',
+                'New Document Uploaded',
+                "{$empName} has uploaded a new {$request->document_type}.{$aiStatus}",
+                $employee->user_id ?? null, // Action creator
+                [
+                    'document_id' => $doc->id,
+                    'employee_id' => $employee->id,
+                    'route_link' => "/employees/{$employee->id}/documents" // React frontend ke liye route hint
+                ]
+            );
+        } catch (\Exception $e) {
+            // Notification fail hone par main flow break nahi hona chahiye
+            \Log::error('Failed to send document upload notification: ' . $e->getMessage());
+        }
+        // ==========================================
+
+
 
             return response()->json([
                 'success' => true,
