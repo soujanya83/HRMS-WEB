@@ -7,6 +7,9 @@ use App\Models\Rostering\ShiftSwapRequest;
 use Illuminate\Http\Request;
 use App\Models\Rostering\Roster;
 use Illuminate\Support\Facades\DB;
+use App\Services\NotificationService;
+use App\Models\Employee\Employee; // Employee names fetch karne ke liye
+use Carbon\Carbon; // Date format karne ke liye
 
 
 class ShiftSwapRequestController extends Controller
@@ -140,6 +143,34 @@ class ShiftSwapRequestController extends Controller
         ]);
 
 
+        // ==========================================
+        // ADD NOTIFICATION LOGIC HERE
+        // ==========================================
+        try {
+            $requester = Employee::find($validated['requester_employee_id']);
+            $requested = Employee::find($validated['requested_employee_id']);
+            
+            $reqName = $requester ? $requester->first_name . ' ' . $requester->last_name : 'An Employee';
+            $resName = $requested ? $requested->first_name . ' ' . $requested->last_name : 'Another Employee';
+            $formattedDate = Carbon::parse($validated['roster_date'])->format('d M Y');
+
+            NotificationService::sendDynamic(
+                $validated['organization_id'],
+                'swap_request_created',
+                'New Shift Swap Request',
+                "{$reqName} has requested a shift swap with {$resName} for {$formattedDate}.",
+                $requester->user_id ?? null,
+                [
+                    'swap_request_id' => $swap->id,
+                    'route_link' => "/shift-swaps" // React frontend route
+                ]
+            );
+        } catch (\Exception $e) {
+            \Log::error('Failed to send swap request notification: ' . $e->getMessage());
+        }
+        // ==========================================
+
+
 
 return response()->json(['success' => true, 'data' => $swap], 201);
         
@@ -262,6 +293,33 @@ return response()->json(['success' => true, 'data' => $swap], 201);
         'requested_roster_id' => $requestedRoster->id,
         'requester_reason' => $validated['requester_reason'],
     ]);
+
+    // ==========================================
+        // ADD NOTIFICATION LOGIC HERE
+        // ==========================================
+        try {
+            $requester = Employee::find($validated['requester_employee_id']);
+            $requested = Employee::find($validated['requested_employee_id']);
+            
+            $reqName = $requester ? $requester->first_name . ' ' . $requester->last_name : 'An Employee';
+            $resName = $requested ? $requested->first_name . ' ' . $requested->last_name : 'Another Employee';
+            $formattedDate = Carbon::parse($validated['roster_date'])->format('d M Y');
+
+            NotificationService::sendDynamic(
+                $swap->organization_id, // Fetching org ID from the swap record
+                'swap_request_updated',
+                'Shift Swap Request Updated',
+                "The shift swap request between {$reqName} and {$resName} for {$formattedDate} has been updated.",
+                $requester->user_id ?? null,
+                [
+                    'swap_request_id' => $swap->id,
+                    'route_link' => "/shift-swaps" // React frontend route
+                ]
+            );
+        } catch (\Exception $e) {
+            \Log::error('Failed to send swap update notification: ' . $e->getMessage());
+        }
+        // ==========================================
 
     return response()->json([
         'success' => true,
