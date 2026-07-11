@@ -7,6 +7,8 @@ use Illuminate\Http\Request;
 use App\Models\manually_adjusted_attendance;
 use App\Models\Employee\Attendance;
 use Carbon\Carbon;
+use App\Services\NotificationService;
+use App\Models\Employee\Employee;
 
 class ManualAttendanceController extends Controller
 {
@@ -32,6 +34,31 @@ class ManualAttendanceController extends Controller
         $data['created_at'] = now();
 
         $adjustment = manually_adjusted_attendance::create($data);
+
+        // ==========================================
+        // ADD NOTIFICATION LOGIC HERE
+        // ==========================================
+        try {
+            $employee = Employee::find($data['employee_id']);
+            $empName = $employee ? $employee->first_name . ' ' . $employee->last_name : 'An Employee';
+            $formattedDate = Carbon::parse($data['date'])->format('d M Y');
+
+            NotificationService::sendDynamic(
+                $data['organization_id'],
+                'attendance_adjustment_created',
+                'New Attendance Adjustment Request',
+                "{$empName} has requested a manual attendance adjustment for {$formattedDate}.",
+                $data['created_by'] ?? ($employee->user_id ?? null),
+                [
+                    'adjustment_id' => $adjustment->id,
+                    'employee_id' => $data['employee_id'],
+                    'route_link' => "/attendance-adjustments" // React frontend page path
+                ]
+            );
+        } catch (\Exception $e) {
+            \Log::error('Failed to send attendance adjustment notification: ' . $e->getMessage());
+        }
+        // ==========================================
 
         return response()->json([
             'status' => true,
@@ -89,6 +116,36 @@ class ManualAttendanceController extends Controller
         }
 
         $adjust->update($request->all());
+
+        // ==========================================
+        // ADD NOTIFICATION LOGIC HERE
+        // ==========================================
+        try {
+            // Update mein direct request me data na bhi aaye to DB ($adjust) se lenge
+            $empId = $request->employee_id ?? $adjust->employee_id;
+            $orgId = $request->organization_id ?? $adjust->organization_id;
+            $dateVal = $request->date ?? $adjust->date;
+
+            $employee = Employee::find($empId);
+            $empName = $employee ? $employee->first_name . ' ' . $employee->last_name : 'An Employee';
+            $formattedDate = Carbon::parse($dateVal)->format('d M Y');
+
+            NotificationService::sendDynamic(
+                $orgId,
+                'attendance_adjustment_updated',
+                'Attendance Adjustment Updated',
+                "The attendance adjustment request for {$empName} on {$formattedDate} has been updated.",
+                auth()->id() ?? ($employee->user_id ?? null), // Jisne update kiya hai (fallback to employee user id)
+                [
+                    'adjustment_id' => $adjust->id,
+                    'employee_id' => $empId,
+                    'route_link' => "/attendance-adjustments" // React frontend page path
+                ]
+            );
+        } catch (\Exception $e) {
+            \Log::error('Failed to send attendance update notification: ' . $e->getMessage());
+        }
+        // ==========================================
 
         return response()->json([
             'status'=>true,
