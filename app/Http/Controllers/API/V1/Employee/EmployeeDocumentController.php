@@ -10,7 +10,7 @@ use GuzzleHttp\Client;
 use Aws\Textract\TextractClient;
 use Illuminate\Support\Facades\Validator;
 use App\Services\NotificationService;
-
+use Illuminate\Support\Facades\Log;
 
 class EmployeeDocumentController extends Controller
 {
@@ -1153,8 +1153,31 @@ if (in_array($sortBy, $allowedSorts)) {
                 }
             }
 
-            $doc = EmployeeDocument::create($validated);
+            // Check if same document type already exists for this employee
+            $existingDocument = EmployeeDocument::where('employee_id', $validated['employee_id'])
+                ->where('document_type', $validated['document_type'])
+                ->first();
 
+            if ($existingDocument) {
+
+                // Delete old file from storage
+                if (!empty($existingDocument->file_url)) {
+
+                    // Convert "/storage/employee_docs/abc.pdf"
+                    // to "employee_docs/abc.pdf"
+                    $oldPath = str_replace('/storage/', '', $existingDocument->file_url);
+
+                    if (Storage::disk('public')->exists($oldPath)) {
+                        Storage::disk('public')->delete($oldPath);
+                    }
+                }
+
+                // Delete old database record
+                $existingDocument->delete();
+            }
+
+            $doc = EmployeeDocument::create($validated);
+Log::info($validated);
 
             
 
