@@ -31,6 +31,7 @@ use Throwable;
 use Exception;
 use App\Models\EmployeeXeroConnection;
 use Illuminate\Support\Facades\Crypt;
+use Carbon\Carbon;
 
 class EmployeeController extends Controller
 {
@@ -99,42 +100,76 @@ class EmployeeController extends Controller
     }
 }
 
-   public function show($id): JsonResponse
-    {
-        try {
-            $employee = Employee::with([
-                'user',
-                'organization',
-                'department',
-                'designation',
-                'applicant',
-                'manager',
-                'documents',
-                'employmentHistory',
-                'probationPeriod',
-                'exitDetails'
-            ])->findOrFail($id);
+ public function show($id): JsonResponse
+{
+    try {
+        $employee = Employee::with([
+            'user',
+            'organization',
+            'department',
+            'designation',
+            'applicant',
+            'manager',
+            'documents',
+            'employmentHistory',
+            'probationPeriod',
+            'exitDetails'
+        ])->findOrFail($id);
 
-            $employee->makeVisible(['face_embedding']);
-            // 👇 Decrypt TFN safely
-            if ($employee->tax_file_number) {
-                try {
-                    $employee->tax_file_number = Crypt::decryptString($employee->tax_file_number);
-                } catch (\Exception $e) {
-                    $employee->tax_file_number = null; // or keep original
+        $employee->makeVisible(['face_embedding']);
+
+        // Decrypt TFN safely
+        if ($employee->tax_file_number) {
+            try {
+                $employee->tax_file_number = Crypt::decryptString($employee->tax_file_number);
+            } catch (\Exception $e) {
+                $employee->tax_file_number = null;
+            }
+        }
+
+             $today = Carbon::today();
+
+            $employee->documents->transform(function ($document) use ($today) {
+
+            // Default values
+            $document->simple_alert = false;
+            $document->critical_alert = false;
+            $document->days_left =  '30++ days';
+
+            // Skip if no expiry date
+            if (empty($document->expiry_date)) {
+                return $document;
+            }
+
+            $expiryDate = Carbon::parse($document->expiry_date);
+
+            // Ignore expired documents
+            if ($expiryDate->gte($today)) {
+
+                $daysRemaining = $today->diffInDays($expiryDate);
+
+                $document->days_left = $daysRemaining;
+
+                if ($daysRemaining <= 7) {
+                    $document->critical_alert = 'true';
+                } elseif ($daysRemaining <= 30) {
+                    $document->simple_alert = 'true';
                 }
             }
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Employee retrieved successfully',
-                'data' => $employee
-            ], 200);
+            return $document;
+        });
 
-        } catch (Exception $e) {
-            return $this->notFound('Employee not found', $e);
-        }
+        return response()->json([
+            'success' => true,
+            'message' => 'Employee retrieved successfully',
+            'data' => $employee
+        ], 200);
+
+    } catch (Exception $e) {
+        return $this->notFound('Employee not found', $e);
     }
+}
 
    public function store(Request $request): JsonResponse
 {
