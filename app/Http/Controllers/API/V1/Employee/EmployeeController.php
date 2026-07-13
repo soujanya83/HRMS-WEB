@@ -32,6 +32,7 @@ use Exception;
 use App\Models\EmployeeXeroConnection;
 use Illuminate\Support\Facades\Crypt;
 use Carbon\Carbon;
+use App\Models\EmployeePolicyAcknowledgement;
 
 class EmployeeController extends Controller
 {
@@ -1165,6 +1166,102 @@ public function getEmployeeStatusCounts(Request $request): JsonResponse
             ]
         ], 200);
     }
+
+
+    public function onboardingStatus($employee_id)
+{
+    $employee = Employee::find($employee_id);
+
+    if (!$employee) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Employee not found.'
+        ], 404);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Personal Details
+    |--------------------------------------------------------------------------
+    */
+
+    $requiredFields = [
+        'first_name',
+        'last_name',
+        'personal_email',
+        'date_of_birth',
+        'gender',
+        'phone_number',
+
+        'tax_file_number',
+        'superannuation_fund_name',
+        'superannuation_member_number',
+        'bank_bsb',
+        'bank_account_number',
+
+        'emergency_contact_name',
+        'emergency_contact_phone',
+        'emergency_contact_relationship',
+
+        'account_name',
+        'bank_name',
+
+        'emergency_contact_name2',
+        'emergency_contact_phone2',
+        'emergency_contact_relationship2',
+    ];
+
+    $personalDetailsCompleted = true;
+
+    foreach ($requiredFields as $field) {
+        if (empty($employee->$field)) {
+            $personalDetailsCompleted = false;
+            break;
+        }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Documents
+    |--------------------------------------------------------------------------
+    */
+
+    $documentsCompleted = EmployeeDocument::where('employee_id', $employee_id)
+        ->count() >= 5;
+
+    /*
+    |--------------------------------------------------------------------------
+    | Policies
+    |--------------------------------------------------------------------------
+    */
+
+    $policiesCompleted = EmployeePolicyAcknowledgement::where('employee_id', $employee_id)
+        ->where('is_acknowledged', 1)
+        ->count() >= 5;
+
+    /*
+    |--------------------------------------------------------------------------
+    | Progress
+    |--------------------------------------------------------------------------
+    */
+
+    $completedSteps = collect([
+        $personalDetailsCompleted,
+        $documentsCompleted,
+        $policiesCompleted
+    ])->filter()->count();
+
+    return response()->json([
+        'success' => true,
+        'data' => [
+            'personal_details' => $personalDetailsCompleted,
+            'documents' => $documentsCompleted,
+            'policies' => $policiesCompleted,
+            'completed_steps' => $completedSteps,
+            'total_steps' => 3
+        ]
+    ]);
+}
 
 
 

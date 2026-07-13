@@ -502,7 +502,11 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
             Route::delete('/{id}/documents/{docId}', [EmployeeController::class, 'deleteDocument']);
             Route::post('/bulk', [EmployeeController::class, 'bulkCreate']);
             Route::post('/basic/store-update',[EmployeeController::class, 'storeOrUpdateBasic']);
+
         });
+
+     Route::get('employees/{employee_id}/onboarding-status',[EmployeeController::class, 'onboardingStatus']);
+
 
         Route::prefix('attendance')->group(function () {
             Route::get('/', [AttendanceController::class, 'index']);
