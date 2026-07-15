@@ -9,69 +9,72 @@ use Carbon\Carbon;
 use App\Models\Rostering\RosterPeriod;
 use App\Models\HolidayModel;
 use Carbon\CarbonPeriod;
+use App\Models\Employee\Employee;
+use App\Models\Department;
+
 
 
 class RosterController extends Controller
 {
     // List all roster entries (optionally by org, employee, date, shift)
-   public function index(Request $request)
-{
-    $user = auth()->user();
+//    public function index(Request $request)
+// {
+//     $user = auth()->user();
 
-    $query = Roster::with([
-        'employee.department', // 👈 load department
-        'organization',
-        'shift',
-        'creator'
-    ]);
+//     $query = Roster::with([
+//         'employee.department', // 👈 load department
+//         'organization',
+//         'shift',
+//         'creator'
+//     ]);
 
-    if ($request->organization_id) $query->where('organization_id', $request->organization_id);
-    if ($request->employee_id) $query->where('employee_id', $request->employee_id);
-    if ($request->roster_date) $query->where('roster_date', $request->roster_date);
-    if ($request->shift_id) $query->where('shift_id', $request->shift_id);
+//     if ($request->organization_id) $query->where('organization_id', $request->organization_id);
+//     if ($request->employee_id) $query->where('employee_id', $request->employee_id);
+//     if ($request->roster_date) $query->where('roster_date', $request->roster_date);
+//     if ($request->shift_id) $query->where('shift_id', $request->shift_id);
 
-    if ($request->start_date && $request->end_date) {
-        $query->whereBetween('roster_date', [$request->start_date, $request->end_date]);
-    }
+//     if ($request->start_date && $request->end_date) {
+//         $query->whereBetween('roster_date', [$request->start_date, $request->end_date]);
+//     }
 
-    // 👇 NEW: Check if the user is an Employee 
-    // We check globally via Spatie, OR specifically for the requested organization using your custom method.
-    $isEmployee = $user->hasRole('Employee') || 
-                  ($request->organization_id && $user->hasRoleForOrganization('Employee', $request->organization_id));
+//     // 👇 NEW: Check if the user is an Employee 
+//     // We check globally via Spatie, OR specifically for the requested organization using your custom method.
+//     $isEmployee = $user->hasRole('Employee') || 
+//                   ($request->organization_id && $user->hasRoleForOrganization('Employee', $request->organization_id));
 
-    if ($isEmployee) {
-        // Option A: If you have a 'rosterPeriod' relationship set up on the Roster model
-        $query->whereHas('period', function ($q) {
-            $q->where('status', '!=', 'draft');
-        });
+//     if ($isEmployee) {
+//         // Option A: If you have a 'rosterPeriod' relationship set up on the Roster model
+//         $query->whereHas('period', function ($q) {
+//             $q->where('status', '!=', 'draft');
+//         });
 
-        /* // Option B: If you DON'T have a relationship set up, use a subquery fallback:
-        // $query->whereNotIn('roster_period_id', \App\Models\RosterPeriod::where('status', 'draft')->select('id'));
-        */
-    }
+//         /* // Option B: If you DON'T have a relationship set up, use a subquery fallback:
+//         // $query->whereNotIn('roster_period_id', \App\Models\RosterPeriod::where('status', 'draft')->select('id'));
+//         */
+//     }
 
-    $rosters = $query->orderBy('roster_date')->get();
+//     $rosters = $query->orderBy('roster_date')->get();
 
-    // 👇 Attach attendance + department safely
-    $rosters->transform(function ($roster) {
-        // Department name (null safe)
-        $roster->department_name = optional(optional($roster->employee)->department)->name;
+//     // 👇 Attach attendance + department safely
+//     $rosters->transform(function ($roster) {
+//         // Department name (null safe)
+//         $roster->department_name = optional(optional($roster->employee)->department)->name;
         
-        // Attendance status
-        $attendance = \App\Models\Employee\Attendance::where('employee_id', $roster->employee_id)
-            ->where('date', $roster->roster_date)
-            ->first();
+//         // Attendance status
+//         $attendance = \App\Models\Employee\Attendance::where('employee_id', $roster->employee_id)
+//             ->where('date', $roster->roster_date)
+//             ->first();
 
-        $roster->attendance_status = $attendance ? $attendance->status : null;
+//         $roster->attendance_status = $attendance ? $attendance->status : null;
 
-        return $roster;
-    });
+//         return $roster;
+//     });
 
-    return response()->json([
-        'success' => true,
-        'data' => $rosters
-    ], 200);
-}
+//     return response()->json([
+//         'success' => true,
+//         'data' => $rosters
+//     ], 200);
+// }
 
     public function getTodayShift(Request $request)
     {
@@ -534,20 +537,155 @@ class RosterController extends Controller
     /**
      * Get Rosters (Optional: Helpful for frontend calendar plotting)
      */
-    // public function index(Request $request)
-    // {
-    //     $query = Roster::query();
+     public function index(Request $request)
+    {
+        $request->validate([
+            'organization_id' => 'required|integer|exists:organizations,id',
+            'from_date'       => 'nullable|date',
+            'to_date'         => 'nullable|date',
+            'employee_id'     => 'nullable|integer|exists:employees,id',
+            'department_id'   => 'nullable',
+        ]);
 
-    //     if ($request->has('organization_id')) {
-    //         $query->where('organization_id', $request->organization_id);
-    //     }
-    //     if ($request->has('from_date') && $request->has('to_date')) {
-    //         $query->whereBetween('roster_date', [$request->from_date, $request->to_date]);
-    //     }
+        $departments = $this->getDepartmentEmployees($request->organization_id);
 
-    //     return response()->json([
-    //         'data' => $query->get()
-    //     ]);
-    // }
+        $rosters = $this->getRosterQuery($request)->get();
+
+        return response()->json([
+            'success'     => true,
+            'departments' => $departments,
+            'rosters'     => $rosters,
+        ]);
+    }
+
+    /**
+     * Get departments with employees grouped under them.
+     */
+    private function getDepartmentEmployees($organizationId)
+    {
+        // Get all departments of organization
+        $departments = Department::where('organization_id', $organizationId)
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        // Get all active employees (SoftDeletes automatically excluded)
+        $employees = Employee::where('organization_id', $organizationId)
+            ->select(
+                'id',
+                'first_name',
+                'last_name',
+                'department_id'
+            )
+            ->orderBy('first_name')
+            ->get();
+
+        $result = [];
+
+        // Create department structure
+        foreach ($departments as $department) {
+
+            $result[$department->id] = [
+                'id' => $department->id,
+                'name' => $department->name,
+                'employees' => [],
+            ];
+        }
+
+        // Add Unassigned department
+        $result['unassigned'] = [
+            'id' => null,
+            'name' => 'Unassigned',
+            'employees' => [],
+        ];
+
+        // Arrange employees department-wise
+        foreach ($employees as $employee) {
+
+            $employeeData = [
+                'id' => $employee->id,
+                'name' => trim($employee->first_name . ' ' . $employee->last_name),
+            ];
+
+            if (
+                $employee->department_id &&
+                isset($result[$employee->department_id])
+            ) {
+
+                $result[$employee->department_id]['employees'][] = $employeeData;
+
+            } else {
+
+                $result['unassigned']['employees'][] = $employeeData;
+            }
+        }
+
+        return array_values($result);
+    }
+
+    /**
+     * Build roster query.
+     */
+    private function getRosterQuery(Request $request)
+    {
+        $user = auth()->user();
+
+        $query = Roster::with([
+            'employee.department',
+            'organization',
+            'shift',
+            'creator',
+        ]);
+
+        // Organization
+        $query->where('organization_id', $request->organization_id);
+
+        // Date range
+        if ($request->filled('from_date') && $request->filled('to_date')) {
+
+            $query->whereBetween('roster_date', [
+                $request->from_date,
+                $request->to_date,
+            ]);
+        }
+
+        // Employee filter
+        if ($request->filled('employee_id')) {
+
+            $query->where('employee_id', $request->employee_id);
+        }
+
+        // Department filter
+        if ($request->filled('department_id')) {
+
+            if ($request->department_id === 'unassigned') {
+
+                $employeeIds = Employee::where('organization_id', $request->organization_id)
+                    ->whereNull('department_id')
+                    ->pluck('id');
+
+            } else {
+
+                $employeeIds = Employee::where('organization_id', $request->organization_id)
+                    ->where('department_id', $request->department_id)
+                    ->pluck('id');
+            }
+
+            $query->whereIn('employee_id', $employeeIds);
+        }
+
+        // Employee can only see published rosters
+        $isEmployee =
+            $user->hasRole('Employee') ||
+            (
+                $request->organization_id &&
+                $user->hasRoleForOrganization('Employee', $request->organization_id)
+            );
+
+        if ($isEmployee) {
+            $query->where('status', 'published');
+        }
+
+        return $query;
+    }
 
 }
