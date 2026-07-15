@@ -671,17 +671,33 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
         });
 
         Route::prefix('rosters')->group(function () {
-            Route::get('/', [RosterController::class, 'index']);
-            Route::get('today-shifts', [RosterController::class, 'getTodayShift']);
-            Route::post('/', [RosterController::class, 'store']);
-            Route::get('/{id}', [RosterController::class, 'show']);
-            Route::put('/{id}', [RosterController::class, 'update']);
-            Route::patch('/{id}', [RosterController::class, 'update']);
-            Route::delete('/{id}', [RosterController::class, 'destroy']);
-            Route::post('/bulk', [RosterController::class, 'bulkStore']);
-            Route::get('/employee/{employeeId}', [RosterController::class, 'byEmployee']);
-            Route::post('bulk-assign', [RosterController::class, 'bulkAssign']);
-            Route::get('period/{periodId}', [RosterController::class, 'byPeriod']);
+
+        // 1. Store & Edit (Single/Bulk Employees and Date Range)
+    Route::post('/', [RosterController::class, 'store']);
+    
+    // 2. Drag and Drop Move (Update target, remove/update source)
+    Route::post('/move', [RosterController::class, 'move']);
+    
+    // 3. Drag and Drop Copy
+    Route::post('/copy', [RosterController::class, 'copy']);
+    
+    // 4. Bulk Status Update
+    Route::post('/bulk-status', [RosterController::class, 'updateStatus']);
+    
+    // 5. Get Rosters (For Calendar/Frontend fetching)
+    Route::get('/', [RosterController::class, 'index']);
+
+            // Route::get('/', [RosterController::class, 'index']);
+            // Route::get('today-shifts', [RosterController::class, 'getTodayShift']);
+            // Route::post('/', [RosterController::class, 'store']);
+            // Route::get('/{id}', [RosterController::class, 'show']);
+            // Route::put('/{id}', [RosterController::class, 'update']);
+            // Route::patch('/{id}', [RosterController::class, 'update']);
+            // Route::delete('/{id}', [RosterController::class, 'destroy']);
+            // Route::post('/bulk', [RosterController::class, 'bulkStore']);
+            // Route::get('/employee/{employeeId}', [RosterController::class, 'byEmployee']);
+            // Route::post('bulk-assign', [RosterController::class, 'bulkAssign']);
+            // Route::get('period/{periodId}', [RosterController::class, 'byPeriod']);
         });
 
 

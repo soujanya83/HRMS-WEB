@@ -23,6 +23,11 @@ class Roster extends Model
         'roster_date',
         'start_time',
         'end_time',
+        'break_start',
+        'break_end',
+        'break_grace_minutes',
+        'total_working_time',
+        'status',
         'notes',
         'created_by',
     ];

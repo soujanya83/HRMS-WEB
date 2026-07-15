@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Carbon\Carbon;
 use App\Models\Rostering\RosterPeriod;
 use App\Models\HolidayModel;
+use Carbon\CarbonPeriod;
 
 
 class RosterController extends Controller
@@ -124,44 +125,44 @@ class RosterController extends Controller
     }
 
     // Create roster entry
-    public function store(Request $request)
-    {
-        $validated = $request->validate([
-            'organization_id' => 'required|exists:organizations,id',
-            'employee_id' => 'required|exists:employees,id',
-            'shift_id' => 'required|exists:shifts,id',
-            'roster_date' => 'required|date',
-           // 'start_time' => 'required|date_format:H:i',
-           //'end_time' => 'required|date_format:H:i|after:start_time',
-            'notes' => 'nullable|string|max:500',
-            'created_by' => 'required|exists:users,id',
-        ]);
+    // public function store(Request $request)
+    // {
+    //     $validated = $request->validate([
+    //         'organization_id' => 'required|exists:organizations,id',
+    //         'employee_id' => 'required|exists:employees,id',
+    //         'shift_id' => 'required|exists:shifts,id',
+    //         'roster_date' => 'required|date',
+    //        // 'start_time' => 'required|date_format:H:i',
+    //        //'end_time' => 'required|date_format:H:i|after:start_time',
+    //         'notes' => 'nullable|string|max:500',
+    //         'created_by' => 'required|exists:users,id',
+    //     ]);
 
-        $date = \Carbon\Carbon::parse($validated['roster_date']);
-        $dayOfWeek = $date->dayOfWeek;
-        $holidayDates = \App\Models\HolidayModel::where('organization_id', $validated['organization_id'])
-            ->where('is_active', true)
-            ->pluck('holiday_date')
-            ->map(function ($d) { return \Carbon\Carbon::parse($d)->toDateString(); })
-            ->toArray();
-        $reason = null;
-        if ($dayOfWeek === \Carbon\Carbon::SUNDAY) {
-            $reason = 'sunday';
-        } elseif ($dayOfWeek === \Carbon\Carbon::SATURDAY) {
-            $reason = 'saturday';
-        } elseif (in_array($date->toDateString(), $holidayDates)) {
-            $reason = 'holiday';
-        }
-        if ($reason) {
-            return response()->json([
-                'error' => 'Cannot create roster for this day',
-                'reason' => $reason,
-                'date' => $date->toDateString()
-            ], 422);
-        }
-        $roster = Roster::create($validated);
-        return response()->json(['success' => true, 'data' => $roster], 201);
-    }
+    //     $date = \Carbon\Carbon::parse($validated['roster_date']);
+    //     $dayOfWeek = $date->dayOfWeek;
+    //     $holidayDates = \App\Models\HolidayModel::where('organization_id', $validated['organization_id'])
+    //         ->where('is_active', true)
+    //         ->pluck('holiday_date')
+    //         ->map(function ($d) { return \Carbon\Carbon::parse($d)->toDateString(); })
+    //         ->toArray();
+    //     $reason = null;
+    //     if ($dayOfWeek === \Carbon\Carbon::SUNDAY) {
+    //         $reason = 'sunday';
+    //     } elseif ($dayOfWeek === \Carbon\Carbon::SATURDAY) {
+    //         $reason = 'saturday';
+    //     } elseif (in_array($date->toDateString(), $holidayDates)) {
+    //         $reason = 'holiday';
+    //     }
+    //     if ($reason) {
+    //         return response()->json([
+    //             'error' => 'Cannot create roster for this day',
+    //             'reason' => $reason,
+    //             'date' => $date->toDateString()
+    //         ], 422);
+    //     }
+    //     $roster = Roster::create($validated);
+    //     return response()->json(['success' => true, 'data' => $roster], 201);
+    // }
 
     // Single roster entry
     public function show($id)
@@ -344,5 +345,209 @@ class RosterController extends Controller
         return response()->json(['success' => true, 'data' => $rosters]);
     }
 
+
+
+
+
+
+
+
+
+
+    //new apiss
+
+    /**
+     * Create or Update Rosters for Single/Multiple Employees and Date Ranges
+     */
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'employee_ids' => 'required|array',
+            'employee_ids.*' => 'required|integer',
+            'organization_id' => 'required|integer',
+            'from_date' => 'required|date',
+            'to_date' => 'required|date|after_or_equal:from_date',
+            'start_time' => 'required',
+            'end_time' => 'required',
+            'break_start' => 'nullable',
+            'break_end' => 'nullable',
+            'break_grace_minutes' => 'nullable|integer',
+            'total_working_time' => 'nullable',
+            'status' => 'required|in:draft,published',
+            'notes' => 'nullable|string',
+            'created_by' => 'required|integer', // Ya auth()->id() use kar sakte hain
+        ]);
+
+        $period = CarbonPeriod::create($request->from_date, $request->to_date);
+        $rosters = [];
+
+        foreach ($period as $date) {
+            // Saturday aur Sunday skip karein
+            if ($date->isWeekend()) {
+                continue;
+            }
+
+            foreach ($request->employee_ids as $empId) {
+                // updateOrCreate check karega agar (employee_id + roster_date) match hua to update, warna create.
+                $roster = Roster::updateOrCreate(
+                    [
+                        'employee_id' => $empId,
+                        'roster_date' => $date->format('Y-m-d'),
+                    ],
+                    [
+                        'organization_id' => $request->organization_id,
+                        'start_time' => $request->start_time,
+                        'end_time' => $request->end_time,
+                        'break_start' => $request->break_start,
+                        'break_end' => $request->break_end,
+                        'break_grace_minutes' => $request->break_grace_minutes,
+                        'total_working_time' => $request->total_working_time,
+                        'status' => $request->status,
+                        'notes' => $request->notes,
+                        'created_by' => $request->created_by,
+                    ]
+                );
+                
+                $rosters[] = $roster;
+            }
+        }
+
+        return response()->json([
+            'message' => 'Rosters saved successfully.',
+            'data' => $rosters
+        ], 200);
+    }
+
+    /**
+     * Drag and Drop: Move Roster (Cut & Paste)
+     */
+    public function move(Request $request)
+    {
+        $request->validate([
+            'roster_id' => 'required|exists:rosters,id',
+            'target_employee_id' => 'required|integer',
+            'target_roster_date' => 'required|date',
+        ]);
+
+        $sourceRoster = Roster::findOrFail($request->roster_id);
+        $targetDate = Carbon::parse($request->target_roster_date);
+
+        if ($targetDate->isWeekend()) {
+            return response()->json(['message' => 'Cannot move roster to a weekend (Saturday/Sunday).'], 422);
+        }
+
+        // Check if a roster already exists at the target location
+        $existingTarget = Roster::where('employee_id', $request->target_employee_id)
+            ->where('roster_date', $targetDate->format('Y-m-d'))
+            ->first();
+
+        if ($existingTarget && $existingTarget->id !== $sourceRoster->id) {
+            // Target pe phle se koi roster hai, usko overwrite (update) kar denge source ke data se
+            $existingTarget->update([
+                'start_time' => $sourceRoster->start_time,
+                'end_time' => $sourceRoster->end_time,
+                'break_start' => $sourceRoster->break_start,
+                'break_end' => $sourceRoster->break_end,
+                'status' => $sourceRoster->status,
+                'notes' => $sourceRoster->notes,
+            ]);
+            // Source roster ko delete kar denge kyunki ye move action hai
+            $sourceRoster->delete();
+            $updatedRoster = $existingTarget;
+        } else {
+            // Target khali hai, just update the source roster's date and employee
+            $sourceRoster->update([
+                'employee_id' => $request->target_employee_id,
+                'roster_date' => $targetDate->format('Y-m-d'),
+            ]);
+            $updatedRoster = $sourceRoster;
+        }
+
+        return response()->json([
+            'message' => 'Roster moved successfully.',
+            'data' => $updatedRoster
+        ]);
+    }
+
+    /**
+     * Drag and Drop: Copy Roster
+     */
+    public function copy(Request $request)
+    {
+        $request->validate([
+            'roster_id' => 'required|exists:rosters,id',
+            'target_employee_id' => 'required|integer',
+            'target_roster_date' => 'required|date',
+        ]);
+
+        $sourceRoster = Roster::findOrFail($request->roster_id);
+        $targetDate = Carbon::parse($request->target_roster_date);
+
+        if ($targetDate->isWeekend()) {
+            return response()->json(['message' => 'Cannot copy roster to a weekend.'], 422);
+        }
+
+        // Copy karte time target par updateOrCreate laga diya
+        $copiedRoster = Roster::updateOrCreate(
+            [
+                'employee_id' => $request->target_employee_id,
+                'roster_date' => $targetDate->format('Y-m-d'),
+            ],
+            [
+                'organization_id' => $sourceRoster->organization_id,
+                'start_time' => $sourceRoster->start_time,
+                'end_time' => $sourceRoster->end_time,
+                'break_start' => $sourceRoster->break_start,
+                'break_end' => $sourceRoster->break_end,
+                'break_grace_minutes' => $sourceRoster->break_grace_minutes,
+                'total_working_time' => $sourceRoster->total_working_time,
+                'status' => $sourceRoster->status,
+                'notes' => $sourceRoster->notes,
+                'created_by' => $sourceRoster->created_by,
+            ]
+        );
+
+        return response()->json([
+            'message' => 'Roster copied successfully.',
+            'data' => $copiedRoster
+        ]);
+    }
+
+    /**
+     * Bulk Status Update
+     */
+    public function updateStatus(Request $request)
+    {
+        $request->validate([
+            'roster_ids' => 'required|array',
+            'roster_ids.*' => 'integer|exists:rosters,id',
+            'status' => 'required|in:draft,published',
+        ]);
+
+        Roster::whereIn('id', $request->roster_ids)->update(['status' => $request->status]);
+
+        return response()->json([
+            'message' => 'Roster statuses updated to ' . $request->status . ' successfully.'
+        ]);
+    }
+
+    /**
+     * Get Rosters (Optional: Helpful for frontend calendar plotting)
+     */
+    // public function index(Request $request)
+    // {
+    //     $query = Roster::query();
+
+    //     if ($request->has('organization_id')) {
+    //         $query->where('organization_id', $request->organization_id);
+    //     }
+    //     if ($request->has('from_date') && $request->has('to_date')) {
+    //         $query->whereBetween('roster_date', [$request->from_date, $request->to_date]);
+    //     }
+
+    //     return response()->json([
+    //         'data' => $query->get()
+    //     ]);
+    // }
 
 }
