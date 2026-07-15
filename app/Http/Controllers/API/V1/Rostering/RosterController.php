@@ -547,83 +547,46 @@ class RosterController extends Controller
             'department_id'   => 'nullable',
         ]);
 
-        $departments = $this->getDepartmentEmployees($request->organization_id);
-
         $rosters = $this->getRosterQuery($request)->get();
 
+        // Get all departments of organization
+        $departments = Department::where('organization_id', $request->organization_id)
+            ->orderBy('name')
+            ->pluck('name', 'id');
+
+        // Initialize response with all departments
+        $groupedRosters = [];
+
+        foreach ($departments as $departmentName) {
+            $groupedRosters[$departmentName] = [];
+        }
+
+        // Add Unassigned section
+        $groupedRosters['Unassigned'] = [];
+
+        // Group rosters by department
+        foreach ($rosters as $roster) {
+
+            if (
+                $roster->employee &&
+                $roster->employee->department
+            ) {
+                $departmentName = $roster->employee->department->name;
+            } else {
+                $departmentName = 'Unassigned';
+            }
+
+            $groupedRosters[$departmentName][] = $roster;
+        }
+
         return response()->json([
-            'success'     => true,
-            'departments' => $departments,
-            'rosters'     => $rosters,
+            'success' => true,
+            'rosters' => $groupedRosters
         ]);
     }
 
     /**
-     * Get departments with employees grouped under them.
-     */
-    private function getDepartmentEmployees($organizationId)
-    {
-        // Get all departments of organization
-        $departments = Department::where('organization_id', $organizationId)
-            ->orderBy('name')
-            ->get(['id', 'name']);
-
-        // Get all active employees (SoftDeletes automatically excluded)
-        $employees = Employee::where('organization_id', $organizationId)
-            ->select(
-                'id',
-                'first_name',
-                'last_name',
-                'department_id'
-            )
-            ->orderBy('first_name')
-            ->get();
-
-        $result = [];
-
-        // Create department structure
-        foreach ($departments as $department) {
-
-            $result[$department->id] = [
-                'id' => $department->id,
-                'name' => $department->name,
-                'employees' => [],
-            ];
-        }
-
-        // Add Unassigned department
-        $result['unassigned'] = [
-            'id' => null,
-            'name' => 'Unassigned',
-            'employees' => [],
-        ];
-
-        // Arrange employees department-wise
-        foreach ($employees as $employee) {
-
-            $employeeData = [
-                'id' => $employee->id,
-                'name' => trim($employee->first_name . ' ' . $employee->last_name),
-            ];
-
-            if (
-                $employee->department_id &&
-                isset($result[$employee->department_id])
-            ) {
-
-                $result[$employee->department_id]['employees'][] = $employeeData;
-
-            } else {
-
-                $result['unassigned']['employees'][] = $employeeData;
-            }
-        }
-
-        return array_values($result);
-    }
-
-    /**
-     * Build roster query.
+     * Build roster query with filters.
      */
     private function getRosterQuery(Request $request)
     {
@@ -633,24 +596,22 @@ class RosterController extends Controller
             'employee.department',
             'organization',
             'shift',
-            'creator',
+            'creator'
         ]);
 
-        // Organization
+        // Organization filter
         $query->where('organization_id', $request->organization_id);
 
-        // Date range
+        // Date filter
         if ($request->filled('from_date') && $request->filled('to_date')) {
-
             $query->whereBetween('roster_date', [
                 $request->from_date,
-                $request->to_date,
+                $request->to_date
             ]);
         }
 
         // Employee filter
         if ($request->filled('employee_id')) {
-
             $query->where('employee_id', $request->employee_id);
         }
 
@@ -673,11 +634,10 @@ class RosterController extends Controller
             $query->whereIn('employee_id', $employeeIds);
         }
 
-        // Employee can only see published rosters
-        $isEmployee =
-            $user->hasRole('Employee') ||
+        // Employee role can only see published rosters
+        $isEmployee = $user->hasRole('Employee') ||
             (
-                $request->organization_id &&
+                $request->filled('organization_id') &&
                 $user->hasRoleForOrganization('Employee', $request->organization_id)
             );
 
