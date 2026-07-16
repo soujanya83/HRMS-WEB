@@ -552,7 +552,7 @@ class RosterController extends Controller
         // Get all departments of organization
         $departments = Department::where('organization_id', $request->organization_id)
             ->orderBy('name')
-            ->pluck('name', 'id');
+            ->pluck('name', 'id', 'color_code');
 
         // Initialize response with all departments
         $groupedRosters = [];
