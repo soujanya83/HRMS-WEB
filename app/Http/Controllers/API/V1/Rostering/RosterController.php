@@ -550,39 +550,54 @@ class RosterController extends Controller
         $rosters = $this->getRosterQuery($request)->get();
 
         // Get all departments of organization
-        $departments = Department::where('organization_id', $request->organization_id)
-            ->orderBy('name')
-            ->pluck('name', 'id', 'color_code');
+     // Get all departments
+$departments = Department::where('organization_id', $request->organization_id)
+    ->orderBy('name')
+    ->get(['id', 'name', 'color_code']);
 
-        // Initialize response with all departments
-        $groupedRosters = [];
+$groupedRosters = [];
 
-        foreach ($departments as $departmentName) {
-            $groupedRosters[$departmentName] = [];
-        }
+// Initialize all departments
+foreach ($departments as $department) {
 
-        // Add Unassigned section
-        $groupedRosters['Unassigned'] = [];
+    $groupedRosters[$department->id] = [
+        'department_id'   => $department->id,
+        'department_name' => $department->name,
+        'color_code'      => $department->color_code,
+        'rosters'         => [],
+    ];
+}
 
-        // Group rosters by department
-        foreach ($rosters as $roster) {
+// Unassigned department
+$groupedRosters['unassigned'] = [
+    'department_id'   => null,
+    'department_name' => 'Unassigned',
+    'color_code'      => null,
+    'rosters'         => [],
+];
 
-            if (
-                $roster->employee &&
-                $roster->employee->department
-            ) {
-                $departmentName = $roster->employee->department->name;
-            } else {
-                $departmentName = 'Unassigned';
-            }
+// Group rosters
+foreach ($rosters as $roster) {
 
-            $groupedRosters[$departmentName][] = $roster;
-        }
+    if (
+        $roster->employee &&
+        $roster->employee->department
+    ) {
 
-        return response()->json([
-            'success' => true,
-            'rosters' => $groupedRosters
-        ]);
+        $departmentId = $roster->employee->department->id;
+
+        $groupedRosters[$departmentId]['rosters'][] = $roster;
+
+    } else {
+
+        $groupedRosters['unassigned']['rosters'][] = $roster;
+    }
+}
+
+return response()->json([
+    'success' => true,
+    'rosters' => array_values($groupedRosters)
+]);
     }
 
     /**
