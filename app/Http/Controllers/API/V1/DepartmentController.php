@@ -5,6 +5,8 @@ namespace App\Http\Controllers\API\V1;
 use App\Http\Controllers\Controller;
 use App\Models\Department;
 use App\Models\Organization;
+use App\Models\Employee\Employee;
+use Illuminate\Http\Request;
 use App\Http\Requests\StoreDepartmentRequest;
 use App\Http\Requests\UpdateDepartmentRequest;
 use Exception;
@@ -100,4 +102,55 @@ class DepartmentController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Assign a department to an employee.
+     */
+    public function assignDepartmentToEmployee(Request $request)
+    {
+        $request->validate([
+            'employee_id' => 'required|exists:employees,id',
+            'department_id' => 'required|exists:departments,id',
+        ]);
+
+        try {
+            $employee = Employee::findOrFail($request->employee_id);
+            $employee->department_id = $request->department_id;
+            $employee->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Department assigned to employee successfully.'
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred: ' . $e->getMessage()
+            ], 500);
+        }
+
+    }
+
+    /**
+     * Get the department of a specific employee.
+     */
+    public function getDepartmentByEmployee($employeeId)
+    {
+        try {
+            $employee = Employee::findOrFail($employeeId);
+            $department = $employee->department;
+
+            return response()->json([
+                'success' => true,
+                'data' => $department
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred: ' . $e->getMessage()
+            ], 500);
+        }
+            }
+
+
 }

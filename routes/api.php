@@ -233,6 +233,8 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
         Route::apiResource('employment-types', EmploymentTypeController::class);
         // Nested Department Routes
         Route::apiResource('organizations.departments', DepartmentController::class)->shallow();
+        Route::post('assign-department-to-employee', [DepartmentController::class, 'assignDepartmentToEmployee']);
+        Route::get('get-department-by-employee/{employeeId}', [DepartmentController::class, 'getDepartmentByEmployee']);
 
         // Nested Designation Routes
         Route::apiResource('organizations.designations', DesignationController::class)->shallow();
