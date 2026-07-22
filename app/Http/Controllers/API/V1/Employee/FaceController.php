@@ -213,4 +213,33 @@ class FaceController extends Controller
         $faces = Employee::whereNotNull('face_embedding')->get(['id', 'face_embedding']);
         return response()->json(['data' => $faces]);
     }
+
+    public function removeFace(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'employee_id' => 'required|integer|exists:employees,id',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors'  => $validator->errors()
+            ], 422);
+        }
+
+        $employee = Employee::findOrFail($request->employee_id);
+        $employee->face_embedding = null;
+        $employee->is_face_registered = false;
+        $employee->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Face embedding removed successfully',
+            'data' => [
+                'employee_id' => $employee->id,
+                'is_face_registered' => false,
+                'profile_image_url' => $employee->profile_image_url,
+            ]
+        ], 200);
+    }
 }

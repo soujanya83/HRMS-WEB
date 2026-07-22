@@ -169,6 +169,7 @@ Route::get('/employee/document/{document_id}', [EmployeeDocumentController::clas
     // Face Embedding APIs
     Route::post('/employees/register-face', [FaceController::class, 'register']);
     Route::get('/faces', [FaceController::class, 'index']);
+    Route::post('/remove-face', [FaceController::class, 'removeFace']);
 
     
     Route::middleware('auth:sanctum')->group(function () {
