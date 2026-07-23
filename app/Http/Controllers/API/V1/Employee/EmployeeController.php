@@ -43,12 +43,13 @@ class EmployeeController extends Controller
         /* ============================
          | 1. VALIDATION
          ============================ */
-       $validated = $request->validate([
+   $validated = $request->validate([
     'organization_id' => ['required', 'exists:organizations,id'],
     'status' => ['nullable', 'in:Active,On Probation,On Leave,Terminated'],
     'department_id' => ['nullable', 'exists:departments,id'],
     'joining_date' => ['nullable', 'date'],
     'sort_by' => ['nullable', 'in:name_asc,name_desc,joining_oldest,joining_latest'],
+    'search' => ['nullable', 'string'],
     'per_page' => ['nullable', 'integer', 'min:1']
 ]);
 
@@ -104,6 +105,21 @@ class EmployeeController extends Controller
         $query->orderBy('joining_date', 'desc');
         break;
 }
+
+
+if (!empty($validated['search'])) {
+    $search = $validated['search'];
+
+    $query->where(function ($q) use ($search) {
+        $q->whereHas('user', function ($userQuery) use ($search) {
+            $userQuery->where('name', 'like', "%{$search}%")
+                      ->orWhere('email', 'like', "%{$search}%");
+        })
+        ->orWhere('employee_code', 'like', "%{$search}%")
+        ->orWhere('phone_number', 'like', "%{$search}%");
+    });
+}
+
 
         /* ============================
          | 3. PAGINATION
