@@ -218,19 +218,20 @@ class HolidayController extends Controller
 
             $today = now()->toDateString();
 
-            $holidays = HolidayModel::where(function ($query) use ($validated, $state) {
-                    $query->where('organization_id', $validated['organization_id'])
-                          ->orWhere(function ($q) use ($state) {
-                              $q->whereNull('organization_id')
-                                ->where(function ($sub) use ($state) {
-                                    $sub->whereNull('state_code')->orWhere('state_code', $state);
-                                });
-                          });
-                })
-                ->whereDate('holiday_date', '>=', $today)
-                ->orderBy('holiday_date', 'asc')
-                ->limit(5)
-                ->get();
+           $holidays = HolidayModel::where(function ($query) use ($validated, $state) {
+            $query->where(function ($q) use ($validated, $state) {
+                $q->where('organization_id', $validated['organization_id'])
+                ->where('state_code', $state);
+            })
+            ->orWhere(function ($q) use ($state) {
+                $q->whereNull('organization_id')
+                ->where('state_code', $state);
+            });
+        })
+        ->whereDate('holiday_date', '>=', $today)
+        ->orderBy('holiday_date', 'asc')
+        ->limit(5)
+        ->get();
 
             return response()->json([
                 'status' => true,
