@@ -43,12 +43,14 @@ class EmployeeController extends Controller
         /* ============================
          | 1. VALIDATION
          ============================ */
-        $validated = $request->validate([
-            'organization_id' => ['required', 'exists:organizations,id'],
-            'status' => ['nullable', 'in:Active,On Probation,On Leave,Terminated'],
-            'department_id' => ['nullable', 'exists:departments,id'],
-            'per_page' => ['nullable', 'integer', 'min:1']
-        ]);
+       $validated = $request->validate([
+    'organization_id' => ['required', 'exists:organizations,id'],
+    'status' => ['nullable', 'in:Active,On Probation,On Leave,Terminated'],
+    'department_id' => ['nullable', 'exists:departments,id'],
+    'joining_date' => ['nullable', 'date'],
+    'sort_by' => ['nullable', 'in:name_asc,name_desc,joining_oldest,joining_latest'],
+    'per_page' => ['nullable', 'integer', 'min:1']
+]);
 
         $perPage = $request->per_page ?? 10;
 
@@ -70,10 +72,38 @@ class EmployeeController extends Controller
             $query->where('status', $validated['status']);
         }
 
+        if (!empty($validated['joining_date'])) {
+    $query->whereDate('joining_date', $validated['joining_date']);
+}
+
         // ✅ Filter by department
         if (!empty($validated['department_id'])) {
             $query->where('department_id', $validated['department_id']);
         }
+
+
+        switch ($request->sort_by) {
+    case 'name_asc':
+        $query->join('users', 'employees.user_id', '=', 'users.id')
+              ->orderBy('users.name', 'asc')
+              ->select('employees.*');
+        break;
+
+    case 'name_desc':
+        $query->join('users', 'employees.user_id', '=', 'users.id')
+              ->orderBy('users.name', 'desc')
+              ->select('employees.*');
+        break;
+
+    case 'joining_oldest':
+        $query->orderBy('joining_date', 'asc');
+        break;
+
+    case 'joining_latest':
+    default:
+        $query->orderBy('joining_date', 'desc');
+        break;
+}
 
         /* ============================
          | 3. PAGINATION
