@@ -43,13 +43,14 @@ class EmployeeController extends Controller
         /* ============================
          | 1. VALIDATION
          ============================ */
-   $validated = $request->validate([
+ $validated = $request->validate([
     'organization_id' => ['required', 'exists:organizations,id'],
     'status' => ['nullable', 'in:Active,On Probation,On Leave,Terminated'],
     'department_id' => ['nullable', 'exists:departments,id'],
-    'joining_date' => ['nullable', 'date'],
-    'sort_by' => ['nullable', 'in:name_asc,name_desc,joining_oldest,joining_latest'],
+    'joining_from_date' => ['nullable', 'date'],
+    'joining_to_date' => ['nullable', 'date', 'after_or_equal:joining_from_date'],
     'search' => ['nullable', 'string'],
+    'sort_by' => ['nullable', 'in:name_asc,name_desc,joining_oldest,joining_latest'],
     'per_page' => ['nullable', 'integer', 'min:1']
 ]);
 
@@ -73,8 +74,15 @@ class EmployeeController extends Controller
             $query->where('status', $validated['status']);
         }
 
-        if (!empty($validated['joining_date'])) {
-    $query->whereDate('joining_date', $validated['joining_date']);
+if (!empty($validated['joining_from_date']) && !empty($validated['joining_to_date'])) {
+    $query->whereBetween('joining_date', [
+        $validated['joining_from_date'],
+        $validated['joining_to_date']
+    ]);
+} elseif (!empty($validated['joining_from_date'])) {
+    $query->whereDate('joining_date', '>=', $validated['joining_from_date']);
+} elseif (!empty($validated['joining_to_date'])) {
+    $query->whereDate('joining_date', '<=', $validated['joining_to_date']);
 }
 
         // ✅ Filter by department
