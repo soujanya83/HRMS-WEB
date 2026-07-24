@@ -138,7 +138,35 @@ public function store(StoreOrganizationRequest $request)
         // ===============================
         // ✅ ASSIGN ROLE (Center Admin)
         // ===============================
-        $user->assignRoleForOrganization('Center Admin', $organization->id);
+
+        $role = DB::table('roles')
+            ->where('name', 'Center Admin')
+            ->where('organization_id', $organization->id)
+            ->first();
+
+        if (!$role) {
+            $roleId = DB::table('roles')->insertGetId([
+                'name' => 'Center Admin',
+                'guard_name' => 'web',
+                'organization_id' => $organization->id,
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
+        } else {
+            $roleId = $role->id;
+        }
+
+        // Assign the role to the user for this organization
+        DB::table('user_organization_roles')->updateOrInsert(
+            [
+                'user_id' => $user->id,
+                'organization_id' => $organization->id,
+                'role_id' => $roleId,
+            ],
+            ['updated_at' => now(), 'created_at' => now()]
+        );
+
+        
 
         DB::commit();
 
