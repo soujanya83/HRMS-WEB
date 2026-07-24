@@ -1260,9 +1260,6 @@ public function getEmployeeStatusCounts(Request $request): JsonResponse
         'account_name',
         'bank_name',
 
-        'emergency_contact_name2',
-        'emergency_contact_phone2',
-        'emergency_contact_relationship2',
     ];
 
     $personalDetailsCompleted = true;
