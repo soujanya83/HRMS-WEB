@@ -39,8 +39,19 @@ class RoleController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'name' => 'required|string|unique:roles,name',
+            'name' => 'required|string',
         ]);
+        $checkExistingRole = Role::where('name', $request->name)
+            ->where('organization_id', $request->organization_id)
+            ->first();
+
+        if ($checkExistingRole) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Role already exists'
+            ], 409);
+        }
+
         $organizationId = $request->organization_id ?? (auth()->user()->organization_id ?? null);
         $role = Role::create([
             'name' => $request->name,
